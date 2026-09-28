@@ -1,0 +1,2117 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model accounts_ledger {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  account_type     account_type_enum
+  account_id       String            @db.Uuid
+  total_debit      Decimal           @default(0) @db.Decimal(15, 2)
+  total_credit     Decimal           @default(0) @db.Decimal(15, 2)
+  balance          Decimal?          @default(dbgenerated("(total_debit - total_credit)")) @db.Decimal(15, 2)
+  last_transaction DateTime?         @db.Timestamptz(6)
+
+  @@unique([account_type, account_id])
+  @@index([account_type, account_id], map: "idx_accounts_entity")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model branches {
+  id                              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  company_id                      String              @db.Uuid
+  name                            String              @db.VarChar(200)
+  address                         String?
+  phone                           String?             @db.VarChar(20)
+  manager_id                      String?             @db.Uuid
+  created_at                      DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at                      DateTime            @default(now()) @db.Timestamptz(6)
+  code                            String              @unique @db.VarChar(50)
+  created_by                      String?             @db.Uuid
+  notes                           String?
+  rejection_reason                String?
+  status                          org_status_enum     @default(DRAFT)
+  type                            branch_type_enum    @default(STANDARD)
+  companies                       companies           @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  creator                         users?              @relation("BranchCreator", fields: [created_by], references: [id])
+  manager                         users?              @relation("BranchManager", fields: [manager_id], references: [id])
+  cashboxes                       cashboxes[]
+  device_sync_state               device_sync_state[]
+  representatives                 representatives[]
+  users_users_branch_idTobranches users[]             @relation("users_branch_idTobranches")
+  warehouses                      warehouses[]
+
+  @@index([status])
+  @@index([type])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model cashbox_sessions {
+  id                                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cashbox_id                              String              @db.Uuid
+  opened_by                               String              @db.Uuid
+  closed_by                               String?             @db.Uuid
+  opened_at                               DateTime            @default(now()) @db.Timestamptz(6)
+  closed_at                               DateTime?           @db.Timestamptz(6)
+  opening_balance                         Decimal             @default(0) @db.Decimal(15, 2)
+  closing_balance                         Decimal             @default(0) @db.Decimal(15, 2)
+  total_sales                             Decimal             @default(0) @db.Decimal(15, 2)
+  total_returns                           Decimal             @default(0) @db.Decimal(15, 2)
+  status                                  cashbox_status_enum @default(OPEN)
+  cashboxes                               cashboxes           @relation(fields: [cashbox_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_cashbox_sessions_closed_byTousers users?              @relation("cashbox_sessions_closed_byTousers", fields: [closed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_cashbox_sessions_opened_byTousers users               @relation("cashbox_sessions_opened_byTousers", fields: [opened_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales_invoices                          sales_invoices[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model cashboxes {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  device_code      String              @unique @db.VarChar(100)
+  cashbox_code     String              @unique @db.VarChar(100)
+  name             String?             @db.VarChar(200)
+  branch_id        String?             @db.Uuid
+  assigned_user_id String?             @db.Uuid
+  status           cashbox_status_enum @default(CLOSED)
+  created_at       DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime            @default(now()) @db.Timestamptz(6)
+  cashbox_sessions cashbox_sessions[]
+  users            users?              @relation(fields: [assigned_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branches         branches?           @relation(fields: [branch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales_invoices   sales_invoices[]
+  payment_vouchers payment_vouchers[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model categories {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name_ar     String       @db.VarChar(200)
+  name_en     String?      @db.VarChar(200)
+  parent_id   String?      @db.Uuid
+  level       Int          @default(0)
+  path        String?
+  image_url   String?
+  order_index Int          @default(0)
+  is_active   Boolean      @default(true)
+  created_at  DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime     @default(now()) @db.Timestamptz(6)
+  parent      categories?  @relation("CategoryHierarchy", fields: [parent_id], references: [id], onUpdate: NoAction)
+  children    categories[] @relation("CategoryHierarchy")
+  products    products[]
+
+  @@index([parent_id], map: "idx_categories_parent")
+  @@index([path], map: "idx_categories_path")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model companies {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String     @db.VarChar(200)
+  logo_url   String?
+  address    String?
+  phone      String?    @db.VarChar(20)
+  email      String?    @db.VarChar(100)
+  tax_number String?    @db.VarChar(50)
+  settings   Json       @default("{}")
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at DateTime   @default(now()) @db.Timestamptz(6)
+  branches   branches[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model customers {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String             @db.VarChar(300)
+  phone           String?            @unique @db.VarChar(20)
+  email           String?            @db.VarChar(150)
+  address         String?
+  type            customer_type_enum @default(RETAIL)
+  balance         Decimal            @default(0) @db.Decimal(15, 2)
+  credit_limit    Decimal            @default(0) @db.Decimal(15, 2)
+  assigned_rep_id String?            @db.Uuid
+  notes           String?
+  is_active       Boolean            @default(true)
+  created_at      DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime           @default(now()) @db.Timestamptz(6)
+  created_by      String?            @db.Uuid
+  representatives representatives?   @relation(fields: [assigned_rep_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users           users?             @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales_invoices  sales_invoices[]
+  payment_vouchers payment_vouchers[]
+
+  @@index([phone], map: "idx_customers_phone")
+  @@index([assigned_rep_id], map: "idx_customers_rep")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model device_sync_state {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  device_id    String    @unique @db.Uuid
+  user_id      String?   @db.Uuid
+  branch_id    String?   @db.Uuid
+  last_sync_at DateTime? @db.Timestamptz(6)
+  last_seq     BigInt    @default(0)
+  device_info  Json      @default("{}")
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  branches     branches? @relation(fields: [branch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users        users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model inventory_movements {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  movement_type    movement_type_enum
+  variant_id       String             @db.Uuid
+  warehouse_id     String             @db.Uuid
+  quantity         Decimal            @db.Decimal(15, 3)
+  unit_cost        Decimal?           @db.Decimal(15, 4)
+  reference_type   String?            @db.VarChar(50)
+  reference_id     String?            @db.Uuid
+  batch_id         String?            @db.Uuid
+  serial_id        String?            @db.Uuid
+  notes            String?
+  performed_by     String?            @db.Uuid
+  device_id        String?            @db.Uuid
+  version          Int                @default(1)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  product_batches  product_batches?   @relation(fields: [batch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users            users?             @relation(fields: [performed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  serials          serials?           @relation(fields: [serial_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product_variants product_variants   @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses       warehouses         @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([reference_type, reference_id], map: "idx_movements_ref")
+  @@index([variant_id, created_at(sort: Desc)], map: "idx_movements_variant")
+  @@index([warehouse_id, created_at(sort: Desc)], map: "idx_movements_warehouse")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payment_vouchers {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  voucher_number String              @unique @db.VarChar(50)
+  amount         Decimal             @db.Decimal(15, 2)
+  payment_method payment_method_enum @default(CASH)
+  notes          String?
+  voucher_date   DateTime            @default(now()) @db.Date
+  created_at     DateTime            @default(now()) @db.Timestamptz(6)
+  created_by     String?             @db.Uuid
+  invoice_id     String?             @db.Uuid
+  supplier_id    String?             @db.Uuid
+  customer_id    String?             @db.Uuid
+  cashbox_id     String?             @db.Uuid
+  sales_invoice_id String?           @db.Uuid
+  voucher_type   voucher_type_enum   @default(PAYMENT)
+  idempotency_key String?            @unique @db.Uuid
+  creator        users?              @relation(fields: [created_by], references: [id])
+  invoice        purchase_invoices?  @relation(fields: [invoice_id], references: [id])
+  supplier       suppliers?          @relation(fields: [supplier_id], references: [id], onDelete: Restrict)
+  customer       customers?          @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cashbox        cashboxes?          @relation(fields: [cashbox_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales_invoice  sales_invoices?     @relation(fields: [sales_invoice_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([supplier_id])
+  @@index([customer_id, voucher_date])
+  @@index([cashbox_id, voucher_date])
+  @@index([sales_invoice_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model permissions {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resource         String             @db.VarChar(100)
+  action           String             @db.VarChar(50)
+  description      String?
+  role_permissions role_permissions[]
+
+  @@unique([resource, action])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_allowed_units {
+  product_id       String           @db.Uuid
+  unit_id          String           @db.Uuid
+  can_buy          Boolean          @default(true)
+  can_sell         Boolean          @default(true)
+  products         products         @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  units_of_measure units_of_measure @relation(fields: [unit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([product_id, unit_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_batches {
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  variant_id               String                     @db.Uuid
+  warehouse_id             String                     @db.Uuid
+  batch_number             String?                    @db.VarChar(100)
+  expiry_date              DateTime?                  @db.Date
+  quantity                 Decimal                    @default(0) @db.Decimal(15, 3)
+  unit_cost                Decimal                    @db.Decimal(15, 4)
+  received_at              DateTime                   @default(now()) @db.Timestamptz(6)
+  purchase_item_id         String?                    @db.Uuid
+  inventory_movements      inventory_movements[]
+  purchase_invoice_items   purchase_invoice_items?    @relation(fields: [purchase_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product_variants         product_variants           @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses               warehouses                 @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales_invoice_items      sales_invoice_items[]
+  stocktaking_items        stocktaking_items[]
+  warehouse_transfer_items warehouse_transfer_items[]
+
+  @@index([variant_id, warehouse_id], map: "idx_batches_variant")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_prices {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  variant_id       String           @db.Uuid
+  price_type       price_type_enum
+  unit_id          String           @db.Uuid
+  price            Decimal          @db.Decimal(15, 4)
+  is_active        Boolean          @default(true)
+  updated_at       DateTime         @default(now()) @db.Timestamptz(6)
+  units_of_measure units_of_measure @relation(fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product_variants product_variants @relation(fields: [variant_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([variant_id, price_type, unit_id])
+  @@index([variant_id, price_type], map: "idx_prices_variant")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_variants {
+  id                         String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_id                 String                       @db.Uuid
+  sku                        String?                      @unique @db.VarChar(100)
+  barcode                    String?                      @unique @db.VarChar(100)
+  attributes                 Json                         @default("{}")
+  weighted_avg_cost          Decimal                      @default(0) @db.Decimal(15, 4)
+  last_purchase_price        Decimal                      @default(0) @db.Decimal(15, 4)
+  is_active                  Boolean                      @default(true)
+  created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  ecommerce_cart_items       ecommerce_cart_items[]
+  ecommerce_order_items      ecommerce_order_items[]
+  ecommerce_product_settings ecommerce_product_settings[]
+  inventory_movements        inventory_movements[]
+  product_batches            product_batches[]
+  product_prices             product_prices[]
+  products                   products                     @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  purchase_invoice_items     purchase_invoice_items[]
+  rep_custody_items          rep_custody_items[]
+  sales_invoice_items        sales_invoice_items[]
+  serials                    serials[]
+  stock_levels               stock_levels[]
+  stocktaking_items          stocktaking_items[]
+  warehouse_transfer_items   warehouse_transfer_items[]
+
+  @@index([barcode], map: "idx_variants_barcode")
+  @@index([product_id], map: "idx_variants_product")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model products {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sku                   String?                 @unique @db.VarChar(100)
+  barcode               String?                 @unique @db.VarChar(100)
+  name_ar               String                  @db.VarChar(300)
+  name_en               String?                 @db.VarChar(300)
+  category_id           String?                 @db.Uuid
+  description           String?
+  base_unit_id          String                  @db.Uuid
+  has_variants          Boolean                 @default(false)
+  has_serial            Boolean                 @default(false)
+  has_expiry            Boolean                 @default(false)
+  image_url             String?
+  images                Json                    @default("[]")
+  min_stock_level       Decimal                 @default(0) @db.Decimal(15, 3)
+  is_active             Boolean                 @default(true)
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime                @default(now()) @db.Timestamptz(6)
+  created_by            String?                 @db.Uuid
+  ecommerce_order_items ecommerce_order_items[]
+  product_allowed_units product_allowed_units[]
+  product_variants      product_variants[]
+  units_of_measure      units_of_measure        @relation(fields: [base_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  categories            categories?             @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                 users?                  @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([is_active], map: "idx_products_active")
+  @@index([barcode], map: "idx_products_barcode")
+  @@index([category_id], map: "idx_products_category")
+  @@index([sku], map: "idx_products_sku")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model purchase_invoice_items {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoice_id            String            @db.Uuid
+  variant_id            String            @db.Uuid
+  unit_id               String            @db.Uuid
+  batch_number          String?           @db.VarChar(100)
+  expiry_date           DateTime?         @db.Date
+  quantity              Decimal           @db.Decimal(15, 3)
+  quantity_in_base_unit Decimal           @db.Decimal(15, 3)
+  unit_cost             Decimal           @db.Decimal(15, 4)
+  cost_per_base_unit    Decimal           @db.Decimal(15, 4)
+  discount_percent      Decimal           @default(0) @db.Decimal(5, 2)
+  total_price           Decimal           @db.Decimal(15, 2)
+  created_at            DateTime          @default(now()) @db.Timestamptz(6)
+  product_batches       product_batches[]
+  purchase_invoices     purchase_invoices @relation(fields: [invoice_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  units_of_measure      units_of_measure  @relation(fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product_variants      product_variants  @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model purchase_invoices {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoice_number         String                   @unique @db.VarChar(50)
+  supplier_id            String                   @db.Uuid
+  warehouse_id           String                   @db.Uuid
+  status                 purchase_status_enum     @default(CONFIRMED)
+  payment_type           purchase_payment_enum    @default(CASH)
+  subtotal               Decimal                  @default(0) @db.Decimal(15, 2)
+  discount_amount        Decimal                  @default(0) @db.Decimal(15, 2)
+  tax_amount             Decimal                  @default(0) @db.Decimal(15, 2)
+  total                  Decimal                  @default(0) @db.Decimal(15, 2)
+  paid_amount            Decimal                  @default(0) @db.Decimal(15, 2)
+  due_amount             Decimal?                 @default(dbgenerated("(total - paid_amount)")) @db.Decimal(15, 2)
+  notes                  String?
+  invoice_date           DateTime                 @default(now()) @db.Date
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  created_by             String?                  @db.Uuid
+  payment_vouchers       payment_vouchers[]
+  purchase_invoice_items purchase_invoice_items[]
+  creator                users?                   @relation(fields: [created_by], references: [id])
+  supplier               suppliers                @relation(fields: [supplier_id], references: [id])
+  warehouse              warehouses               @relation(fields: [warehouse_id], references: [id])
+
+  @@index([supplier_id])
+  @@index([warehouse_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model rep_custody_items {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  custody_order_id   String             @db.Uuid
+  variant_id         String             @db.Uuid
+  serial_id          String?            @db.Uuid
+  quantity_sent      Decimal            @db.Decimal(15, 3)
+  quantity_sold      Decimal            @default(0) @db.Decimal(15, 3)
+  quantity_returned  Decimal            @default(0) @db.Decimal(15, 3)
+  rep_custody_orders rep_custody_orders @relation(fields: [custody_order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  serials            serials?           @relation(fields: [serial_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product_variants   product_variants   @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model rep_custody_orders {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_number      String              @unique @db.VarChar(50)
+  rep_id            String              @db.Uuid
+  warehouse_id      String              @db.Uuid
+  status            custody_status_enum @default(PENDING)
+  dispatch_date     DateTime?           @db.Timestamptz(6)
+  return_due_date   DateTime?           @db.Date
+  notes             String?
+  idempotency_key   String?             @unique @db.VarChar(200)
+  created_at        DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime            @default(now()) @db.Timestamptz(6)
+  created_by        String?             @db.Uuid
+  rep_custody_items rep_custody_items[]
+  users             users?              @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  representatives   representatives     @relation(fields: [rep_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses        warehouses          @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model representatives {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String               @unique @db.Uuid
+  name               String               @db.VarChar(300)
+  phone              String?              @db.VarChar(20)
+  branch_id          String?              @db.Uuid
+  commission_rate    Decimal              @default(0) @db.Decimal(15, 2)
+  commission_type    commission_type_enum @default(PERCENT)
+  status             rep_status_enum      @default(ACTIVE)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  location_url       String?
+  office_address     String?
+  office_name        String?              @db.VarChar(200)
+  office_phone       String?              @db.VarChar(50)
+  paid_commission    Decimal              @default(0) @db.Decimal(15, 2)
+  allowed_prices     String               @default("wholesale,representative,retail") @db.VarChar(200)
+  customers          customers[]
+  ecommerce_orders   ecommerce_orders[]
+  rep_custody_orders rep_custody_orders[]
+  branches           branches?            @relation(fields: [branch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users              users                @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales_invoices     sales_invoices[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model role_permissions {
+  role_id       String      @db.Uuid
+  permission_id String      @db.Uuid
+  permissions   permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  roles         roles       @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([role_id, permission_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model roles {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String             @unique @db.VarChar(100)
+  description      String?
+  is_system        Boolean            @default(false)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  role_permissions role_permissions[]
+  users            users[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sales_invoice_items {
+  id                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoice_id            String           @db.Uuid
+  variant_id            String           @db.Uuid
+  batch_id              String?          @db.Uuid
+  serial_id             String?          @db.Uuid
+  unit_id               String           @db.Uuid
+  quantity              Decimal          @db.Decimal(15, 3)
+  quantity_in_base_unit Decimal          @db.Decimal(15, 3)
+  unit_price            Decimal          @db.Decimal(15, 4)
+  cost_per_base_unit    Decimal          @db.Decimal(15, 4)
+  discount_percent      Decimal          @default(0) @db.Decimal(5, 2)
+  net_unit_price        Decimal          @db.Decimal(15, 4)
+  total_price           Decimal          @db.Decimal(15, 2)
+  product_batches       product_batches? @relation(fields: [batch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales_invoices        sales_invoices   @relation(fields: [invoice_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  serials               serials?         @relation(fields: [serial_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  units_of_measure      units_of_measure @relation(fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product_variants      product_variants @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sales_invoices {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoice_number      String                @unique @db.VarChar(50)
+  cashbox_id          String?               @db.Uuid
+  session_id          String?               @db.Uuid
+  customer_id         String?               @db.Uuid
+  warehouse_id        String                @db.Uuid
+  rep_id              String?               @db.Uuid
+  price_type          price_type_enum       @default(RETAIL)
+  payment_type        sales_payment_enum    @default(CASH)
+  status              sales_status_enum     @default(DRAFT)
+  subtotal            Decimal               @default(0) @db.Decimal(15, 2)
+  discount_amount     Decimal               @default(0) @db.Decimal(15, 2)
+  total               Decimal               @default(0) @db.Decimal(15, 2)
+  paid_amount         Decimal               @default(0) @db.Decimal(15, 2)
+  due_amount          Decimal               @default(0) @db.Decimal(15, 2)
+  notes               String?
+  idempotency_key     String                @unique @db.VarChar(200)
+  device_id           String?               @db.Uuid
+  version             Int                   @default(1)
+  invoice_date        DateTime              @default(now()) @db.Timestamptz(6)
+  due_date            DateTime?             @db.Date
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime              @default(now()) @db.Timestamptz(6)
+  created_by          String?               @db.Uuid
+  ecommerce_order     ecommerce_orders?
+  sales_invoice_items sales_invoice_items[]
+  customer_receipts   payment_vouchers[]
+  cashboxes           cashboxes?            @relation(fields: [cashbox_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users               users?                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customers           customers?            @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  representatives     representatives?      @relation(fields: [rep_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cashbox_sessions    cashbox_sessions?     @relation(fields: [session_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses          warehouses            @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([cashbox_id], map: "idx_sales_cashbox")
+  @@index([customer_id], map: "idx_sales_customer")
+  @@index([invoice_date(sort: Desc)], map: "idx_sales_date")
+  @@index([idempotency_key], map: "idx_sales_idem")
+  @@index([rep_id], map: "idx_sales_rep")
+  @@index([status], map: "idx_sales_status")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model serials {
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  variant_id               String                     @db.Uuid
+  serial_no                String                     @unique @db.VarChar(200)
+  status                   serial_status_enum         @default(IN_STOCK)
+  warehouse_id             String?                    @db.Uuid
+  created_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  inventory_movements      inventory_movements[]
+  rep_custody_items        rep_custody_items[]
+  sales_invoice_items      sales_invoice_items[]
+  product_variants         product_variants           @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses               warehouses?                @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  stocktaking_items        stocktaking_items[]
+  warehouse_transfer_items warehouse_transfer_items[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model stock_levels {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  variant_id          String           @db.Uuid
+  warehouse_id        String           @db.Uuid
+  quantity_on_hand    Decimal          @default(0) @db.Decimal(15, 3)
+  quantity_reserved   Decimal          @default(0) @db.Decimal(15, 3)
+  quantity_in_transit Decimal          @default(0) @db.Decimal(15, 3)
+  updated_at          DateTime         @default(now()) @db.Timestamptz(6)
+  product_variants    product_variants @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses          warehouses       @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([variant_id, warehouse_id])
+  @@index([variant_id], map: "idx_stock_variant")
+  @@index([warehouse_id], map: "idx_stock_warehouse")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model stocktaking_items {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_id           String               @db.Uuid
+  variant_id           String               @db.Uuid
+  batch_id             String?              @db.Uuid
+  serial_id            String?              @db.Uuid
+  system_quantity      Decimal              @default(0) @db.Decimal(15, 3)
+  counted_quantity     Decimal              @default(0) @db.Decimal(15, 3)
+  difference           Decimal?             @default(dbgenerated("(counted_quantity - system_quantity)")) @db.Decimal(15, 3)
+  unit_cost            Decimal?             @db.Decimal(15, 4)
+  adjustment_type      adjustment_type_enum @default(NONE)
+  product_batches      product_batches?     @relation(fields: [batch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  serials              serials?             @relation(fields: [serial_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  stocktaking_sessions stocktaking_sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product_variants     product_variants     @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([session_id, variant_id, batch_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model stocktaking_sessions {
+  id                                            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_number                                String                  @unique @db.VarChar(50)
+  warehouse_id                                  String                  @db.Uuid
+  type                                          stocktaking_type_enum   @default(BLIND)
+  status                                        stocktaking_status_enum @default(OPEN)
+  snapshot_at                                   DateTime                @default(now()) @db.Timestamptz(6)
+  approved_at                                   DateTime?               @db.Timestamptz(6)
+  notes                                         String?
+  created_at                                    DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                                    DateTime                @default(now()) @db.Timestamptz(6)
+  created_by                                    String?                 @db.Uuid
+  approved_by                                   String?                 @db.Uuid
+  stocktaking_items                             stocktaking_items[]
+  users_stocktaking_sessions_approved_byTousers users?                  @relation("stocktaking_sessions_approved_byTousers", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_stocktaking_sessions_created_byTousers  users?                  @relation("stocktaking_sessions_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses                                    warehouses              @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model suppliers {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String              @db.VarChar(300)
+  phone             String?             @db.VarChar(20)
+  email             String?             @db.VarChar(150)
+  address           String?
+  tax_number        String?             @db.VarChar(50)
+  balance           Decimal             @default(0) @db.Decimal(15, 2)
+  credit_limit      Decimal             @default(0) @db.Decimal(15, 2)
+  notes             String?
+  is_active         Boolean             @default(true)
+  created_at        DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime            @default(now()) @db.Timestamptz(6)
+  created_by        String?             @db.Uuid
+  payment_vouchers  payment_vouchers[]
+  purchase_invoices purchase_invoices[]
+  creator           users?              @relation(fields: [created_by], references: [id])
+
+  @@index([name])
+}
+
+model sym_channel {
+  channel_id                                             String        @id @db.VarChar(128)
+  processing_order                                       Int           @default(1)
+  max_batch_size                                         Int           @default(1000)
+  max_batch_to_send                                      Int           @default(60)
+  max_data_to_route                                      Int           @default(100000)
+  extract_period_millis                                  Int           @default(0)
+  enabled                                                Int           @default(1) @db.SmallInt
+  use_old_data_to_route                                  Int           @default(1) @db.SmallInt
+  use_row_data_to_route                                  Int           @default(1) @db.SmallInt
+  use_pk_data_to_route                                   Int           @default(1) @db.SmallInt
+  reload_flag                                            Int           @default(0) @db.SmallInt
+  file_sync_flag                                         Int           @default(0) @db.SmallInt
+  contains_big_lob                                       Int           @default(0) @db.SmallInt
+  batch_algorithm                                        String        @default("default") @db.VarChar(50)
+  data_loader_type                                       String        @default("default") @db.VarChar(50)
+  description                                            String?       @db.VarChar(255)
+  queue                                                  String        @default("default") @db.VarChar(25)
+  max_network_kbps                                       Decimal       @default(0.000) @db.Decimal(10, 3)
+  data_event_action                                      String?       @db.Char(1)
+  create_time                                            DateTime?     @db.Timestamp(6)
+  last_update_by                                         String?       @db.VarChar(50)
+  last_update_time                                       DateTime?     @db.Timestamp(6)
+  sym_trigger_sym_trigger_channel_idTosym_channel        sym_trigger[] @relation("sym_trigger_channel_idTosym_channel")
+  sym_trigger_sym_trigger_reload_channel_idTosym_channel sym_trigger[] @relation("sym_trigger_reload_channel_idTosym_channel")
+}
+
+model sym_conflict {
+  conflict_id          String              @id @db.VarChar(50)
+  source_node_group_id String              @db.VarChar(50)
+  target_node_group_id String              @db.VarChar(50)
+  target_channel_id    String?             @db.VarChar(128)
+  target_catalog_name  String?             @db.VarChar(255)
+  target_schema_name   String?             @db.VarChar(255)
+  target_table_name    String?             @db.VarChar(255)
+  detect_type          String              @db.VarChar(128)
+  detect_expression    String?
+  resolve_type         String              @db.VarChar(128)
+  ping_back            String              @db.VarChar(128)
+  resolve_changes_only Int?                @default(0) @db.SmallInt
+  resolve_row_only     Int?                @default(0) @db.SmallInt
+  create_time          DateTime            @db.Timestamp(6)
+  last_update_by       String?             @db.VarChar(50)
+  last_update_time     DateTime            @db.Timestamp(6)
+  sym_node_group_link  sym_node_group_link @relation(fields: [source_node_group_id, target_node_group_id], references: [source_node_group_id, target_node_group_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_cf_2_grp_lnk")
+}
+
+model sym_context {
+  name             String    @id @db.VarChar(80)
+  context_value    String?
+  create_time      DateTime? @db.Timestamp(6)
+  last_update_time DateTime? @db.Timestamp(6)
+}
+
+model sym_data {
+  data_id         BigInt    @id @default(autoincrement())
+  table_name      String    @db.VarChar(255)
+  event_type      String    @db.Char(1)
+  row_data        String?
+  pk_data         String?
+  old_data        String?
+  trigger_hist_id Int
+  channel_id      String?   @db.VarChar(128)
+  transaction_id  String?   @db.VarChar(255)
+  source_node_id  String?   @db.VarChar(50)
+  external_data   String?   @db.VarChar(50)
+  node_list       String?   @db.VarChar(255)
+  is_prerouted    Int       @default(0) @db.SmallInt
+  create_time     DateTime? @db.Timestamp(6)
+
+  @@unique([data_id, channel_id], map: "sym_idx_d_channel_id")
+}
+
+model sym_data_event {
+  data_id     BigInt
+  batch_id    BigInt
+  create_time DateTime? @db.Timestamp(6)
+
+  @@id([data_id, batch_id])
+  @@index([batch_id], map: "sym_idx_de_batchid")
+}
+
+model sym_data_gap {
+  start_id             BigInt
+  end_id               BigInt
+  is_expired           Int      @default(0) @db.SmallInt
+  create_time          DateTime @db.Timestamp(6)
+  last_update_hostname String?  @db.VarChar(255)
+
+  @@id([start_id, end_id])
+}
+
+model sym_extension {
+  extension_id     String    @id @db.VarChar(50)
+  extension_type   String    @db.VarChar(10)
+  interface_name   String?   @db.VarChar(255)
+  node_group_id    String    @db.VarChar(50)
+  enabled          Int       @default(1) @db.SmallInt
+  extension_order  Int       @default(1)
+  extension_text   String?
+  create_time      DateTime? @db.Timestamp(6)
+  last_update_by   String?   @db.VarChar(50)
+  last_update_time DateTime? @db.Timestamp(6)
+}
+
+model sym_extract_request {
+  request_id                BigInt
+  source_node_id            String    @default("default") @db.VarChar(50)
+  node_id                   String    @db.VarChar(50)
+  queue                     String?   @db.VarChar(128)
+  status                    String?   @db.Char(2)
+  start_batch_id            BigInt
+  end_batch_id              BigInt
+  trigger_id                String    @db.VarChar(128)
+  router_id                 String    @db.VarChar(50)
+  load_id                   BigInt?
+  table_name                String?   @db.VarChar(255)
+  byte_count                BigInt    @default(0)
+  extracted_rows            BigInt    @default(0)
+  extracted_millis          BigInt    @default(0)
+  transferred_rows          BigInt    @default(0)
+  transferred_millis        BigInt    @default(0)
+  last_transferred_batch_id BigInt?
+  loaded_rows               BigInt    @default(0)
+  loaded_millis             BigInt    @default(0)
+  last_loaded_batch_id      BigInt?
+  total_rows                BigInt?
+  conflicted_rows           BigInt    @default(0)
+  loaded_time               DateTime? @db.Timestamp(6)
+  parent_request_id         BigInt    @default(0)
+  extract_thread_id         Int?
+  load_thread_id            Int?
+  last_update_time          DateTime? @db.Timestamp(6)
+  create_time               DateTime? @db.Timestamp(6)
+  bulk_rows_loaded          BigInt?   @default(0)
+
+  @@id([request_id, source_node_id])
+  @@index([load_id, source_node_id], map: "sym_idx_er_ld_src_nd")
+  @@index([source_node_id, status], map: "sym_idx_er_src_nd_st")
+}
+
+model sym_file_incoming {
+  relative_dir       String  @db.VarChar(255)
+  file_name          String  @db.VarChar(260)
+  last_event_type    String  @db.Char(1)
+  node_id            String  @db.VarChar(50)
+  file_modified_time BigInt?
+
+  @@id([relative_dir, file_name])
+}
+
+model sym_file_snapshot {
+  trigger_id         String   @db.VarChar(128)
+  router_id          String   @db.VarChar(50)
+  relative_dir       String   @db.VarChar(255)
+  file_name          String   @db.VarChar(260)
+  channel_id         String   @default("filesync") @db.VarChar(128)
+  reload_channel_id  String   @default("filesync_reload") @db.VarChar(128)
+  last_event_type    String   @db.Char(1)
+  crc32_checksum     BigInt?
+  file_size          BigInt?
+  file_modified_time BigInt?
+  last_update_time   DateTime @db.Timestamp(6)
+  last_update_by     String?  @db.VarChar(50)
+  create_time        DateTime @db.Timestamp(6)
+  external_file_data String?  @db.VarChar(50)
+
+  @@id([trigger_id, router_id, relative_dir, file_name])
+  @@index([reload_channel_id], map: "sym_idx_f_snpsht_chid")
+}
+
+model sym_file_trigger {
+  trigger_id              String                    @id @db.VarChar(128)
+  channel_id              String                    @default("filesync") @db.VarChar(128)
+  reload_channel_id       String                    @default("filesync_reload") @db.VarChar(128)
+  base_dir                String                    @db.VarChar(255)
+  recurse                 Int                       @default(1) @db.SmallInt
+  includes_files          String?                   @db.VarChar(255)
+  excludes_files          String?                   @db.VarChar(255)
+  sync_on_create          Int                       @default(1) @db.SmallInt
+  sync_on_modified        Int                       @default(1) @db.SmallInt
+  sync_on_delete          Int                       @default(1) @db.SmallInt
+  sync_on_ctl_file        Int                       @default(0) @db.SmallInt
+  delete_after_sync       Int                       @default(0) @db.SmallInt
+  before_copy_script      String?
+  after_copy_script       String?
+  create_time             DateTime                  @db.Timestamp(6)
+  last_update_by          String?                   @db.VarChar(50)
+  last_update_time        DateTime                  @db.Timestamp(6)
+  description             String?
+  sym_file_trigger_router sym_file_trigger_router[]
+}
+
+model sym_file_trigger_router {
+  trigger_id           String           @db.VarChar(128)
+  router_id            String           @db.VarChar(50)
+  enabled              Int              @default(1) @db.SmallInt
+  initial_load_enabled Int              @default(1) @db.SmallInt
+  target_base_dir      String?          @db.VarChar(255)
+  conflict_strategy    String           @default("source_wins") @db.VarChar(128)
+  create_time          DateTime         @db.Timestamp(6)
+  last_update_by       String?          @db.VarChar(50)
+  last_update_time     DateTime         @db.Timestamp(6)
+  description          String?
+  sym_file_trigger     sym_file_trigger @relation(fields: [trigger_id], references: [trigger_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_ftr_2_ftrg")
+  sym_router           sym_router       @relation(fields: [router_id], references: [router_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_ftr_2_rtr")
+
+  @@id([trigger_id, router_id])
+}
+
+model sym_grouplet {
+  grouplet_id                 String                        @id @db.VarChar(50)
+  grouplet_link_policy        String                        @default("I") @db.Char(1)
+  description                 String?                       @db.VarChar(255)
+  create_time                 DateTime                      @db.Timestamp(6)
+  last_update_by              String?                       @db.VarChar(50)
+  last_update_time            DateTime                      @db.Timestamp(6)
+  sym_grouplet_link           sym_grouplet_link[]
+  sym_trigger_router_grouplet sym_trigger_router_grouplet[]
+}
+
+model sym_grouplet_link {
+  grouplet_id      String       @db.VarChar(50)
+  external_id      String       @db.VarChar(255)
+  create_time      DateTime     @db.Timestamp(6)
+  last_update_by   String?      @db.VarChar(50)
+  last_update_time DateTime     @db.Timestamp(6)
+  sym_grouplet     sym_grouplet @relation(fields: [grouplet_id], references: [grouplet_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_gpltlnk_2_gplt")
+
+  @@id([grouplet_id, external_id])
+}
+
+model sym_incoming_batch {
+  batch_id                 BigInt
+  node_id                  String    @db.VarChar(50)
+  channel_id               String?   @db.VarChar(128)
+  status                   String?   @db.Char(2)
+  error_flag               Int?      @default(0) @db.SmallInt
+  sql_state                String?   @db.VarChar(10)
+  sql_code                 Int       @default(0)
+  sql_message              String?
+  last_update_hostname     String?   @db.VarChar(255)
+  last_update_time         DateTime? @db.Timestamp(6)
+  create_time              DateTime? @db.Timestamp(6)
+  summary                  String?   @db.VarChar(255)
+  ignore_count             Int       @default(0)
+  byte_count               BigInt    @default(0)
+  load_flag                Int?      @default(0) @db.SmallInt
+  extract_count            Int       @default(0)
+  sent_count               Int       @default(0)
+  load_count               Int       @default(0)
+  reload_row_count         Int       @default(0)
+  other_row_count          Int       @default(0)
+  data_row_count           Int       @default(0)
+  extract_row_count        Int       @default(0)
+  load_row_count           Int       @default(0)
+  data_insert_row_count    Int       @default(0)
+  data_update_row_count    Int       @default(0)
+  data_delete_row_count    Int       @default(0)
+  extract_insert_row_count Int       @default(0)
+  extract_update_row_count Int       @default(0)
+  extract_delete_row_count Int       @default(0)
+  load_insert_row_count    Int       @default(0)
+  load_update_row_count    Int       @default(0)
+  load_delete_row_count    Int       @default(0)
+  network_millis           Int       @default(0)
+  filter_millis            Int       @default(0)
+  load_millis              Int       @default(0)
+  router_millis            Int       @default(0)
+  extract_millis           Int       @default(0)
+  transform_extract_millis Int       @default(0)
+  transform_load_millis    Int       @default(0)
+  load_id                  BigInt?
+  common_flag              Int?      @default(0) @db.SmallInt
+  fallback_insert_count    Int       @default(0)
+  fallback_update_count    Int       @default(0)
+  conflict_win_count       Int       @default(0)
+  conflict_lose_count      Int       @default(0)
+  ignore_row_count         Int       @default(0)
+  missing_delete_count     Int       @default(0)
+  skip_count               Int       @default(0)
+  failed_row_number        Int       @default(0)
+  failed_line_number       Int       @default(0)
+  failed_data_id           BigInt    @default(0)
+  bulk_loader_flag         Int?      @default(0) @db.SmallInt
+
+  @@id([batch_id, node_id])
+  @@index([error_flag], map: "sym_idx_ib_in_error")
+  @@index([create_time, status], map: "sym_idx_ib_time_status")
+}
+
+model sym_incoming_error {
+  batch_id            BigInt
+  node_id             String    @db.VarChar(50)
+  failed_row_number   BigInt
+  failed_line_number  BigInt    @default(0)
+  target_catalog_name String?   @db.VarChar(255)
+  target_schema_name  String?   @db.VarChar(255)
+  target_table_name   String    @db.VarChar(255)
+  event_type          String    @db.Char(1)
+  binary_encoding     String    @default("HEX") @db.VarChar(10)
+  column_names        String
+  pk_column_names     String
+  row_data            String?
+  old_data            String?
+  cur_data            String?
+  resolve_data        String?
+  resolve_ignore      Int?      @default(0) @db.SmallInt
+  conflict_id         String?   @db.VarChar(50)
+  create_time         DateTime? @db.Timestamp(6)
+  last_update_by      String?   @db.VarChar(50)
+  last_update_time    DateTime  @db.Timestamp(6)
+
+  @@id([batch_id, node_id, failed_row_number])
+}
+
+model sym_job {
+  job_name              String    @id @db.VarChar(50)
+  job_type              String    @db.VarChar(10)
+  requires_registration Int       @default(1) @db.SmallInt
+  job_expression        String?
+  implementation        String?   @db.VarChar(255)
+  description           String?   @db.VarChar(255)
+  default_schedule      String?   @db.VarChar(50)
+  default_auto_start    Int       @default(1) @db.SmallInt
+  node_group_id         String    @db.VarChar(50)
+  is_clustered          Int       @default(0) @db.SmallInt
+  create_by             String?   @db.VarChar(50)
+  create_time           DateTime? @db.Timestamp(6)
+  last_update_by        String?   @db.VarChar(50)
+  last_update_time      DateTime? @db.Timestamp(6)
+}
+
+model sym_load_filter {
+  load_filter_id        String   @id @db.VarChar(50)
+  load_filter_type      String   @db.VarChar(10)
+  source_node_group_id  String   @db.VarChar(50)
+  target_node_group_id  String   @db.VarChar(50)
+  target_catalog_name   String?  @db.VarChar(255)
+  target_schema_name    String?  @db.VarChar(255)
+  target_table_name     String?  @db.VarChar(255)
+  filter_on_update      Int      @default(1) @db.SmallInt
+  filter_on_insert      Int      @default(1) @db.SmallInt
+  filter_on_delete      Int      @default(1) @db.SmallInt
+  before_write_script   String?
+  after_write_script    String?
+  batch_complete_script String?
+  batch_commit_script   String?
+  batch_rollback_script String?
+  handle_error_script   String?
+  create_time           DateTime @db.Timestamp(6)
+  last_update_by        String?  @db.VarChar(50)
+  last_update_time      DateTime @db.Timestamp(6)
+  load_filter_order     Int      @default(1)
+  fail_on_error         Int      @default(0) @db.SmallInt
+}
+
+model sym_lock {
+  lock_action            String    @id @db.VarChar(50)
+  lock_type              String    @db.VarChar(50)
+  locking_server_id      String?   @db.VarChar(255)
+  lock_time              DateTime? @db.Timestamp(6)
+  shared_count           Int       @default(0)
+  shared_enable          Int       @default(0)
+  last_lock_time         DateTime? @db.Timestamp(6)
+  last_locking_server_id String?   @db.VarChar(255)
+}
+
+model sym_node {
+  node_id                    String             @id @db.VarChar(50)
+  node_group_id              String             @db.VarChar(50)
+  external_id                String             @db.VarChar(255)
+  sync_enabled               Int?               @default(0) @db.SmallInt
+  sync_url                   String?            @db.VarChar(255)
+  schema_version             String?            @db.VarChar(50)
+  symmetric_version          String?            @db.VarChar(50)
+  config_version             String?            @db.VarChar(50)
+  database_type              String?            @db.VarChar(50)
+  database_version           String?            @db.VarChar(50)
+  database_name              String?            @db.VarChar(50)
+  batch_to_send_count        Int?               @default(0)
+  batch_in_error_count       Int?               @default(0)
+  batch_last_successful      DateTime?          @db.Timestamp(6)
+  data_rows_to_send_count    Int?               @default(0)
+  data_rows_loaded_count     Int?               @default(0)
+  oldest_load_time           DateTime?          @db.Timestamp(6)
+  most_recent_active_table   String?            @db.VarChar(255)
+  purge_outgoing_last_run_ms BigInt?            @default(0)
+  purge_outgoing_last_finish DateTime?          @db.Timestamp(6)
+  purge_outgoing_average_ms  BigInt?
+  routing_last_run_ms        BigInt?
+  routing_last_finish        DateTime?          @db.Timestamp(6)
+  routing_average_run_ms     BigInt?            @default(0)
+  sym_data_size              BigInt?
+  created_at_node_id         String?            @db.VarChar(50)
+  deployment_type            String?            @db.VarChar(50)
+  deployment_sub_type        String?            @db.VarChar(50)
+  sym_node_identity          sym_node_identity?
+  sym_node_security          sym_node_security?
+}
+
+model sym_node_channel_ctl {
+  node_id           String    @db.VarChar(50)
+  target_node_id    String    @db.VarChar(50)
+  channel_id        String    @db.VarChar(128)
+  suspend_enabled   Int?      @default(0) @db.SmallInt
+  ignore_enabled    Int?      @default(0) @db.SmallInt
+  last_extract_time DateTime? @db.Timestamp(6)
+
+  @@id([node_id, target_node_id, channel_id])
+}
+
+model sym_node_communication {
+  node_id              String    @db.VarChar(50)
+  queue                String    @default("default") @db.VarChar(25)
+  communication_type   String    @db.VarChar(10)
+  lock_time            DateTime? @db.Timestamp(6)
+  locking_server_id    String?   @db.VarChar(255)
+  last_lock_time       DateTime? @db.Timestamp(6)
+  last_lock_millis     BigInt?   @default(0)
+  success_count        BigInt?   @default(0)
+  fail_count           BigInt?   @default(0)
+  skip_count           BigInt?   @default(0)
+  total_success_count  BigInt?   @default(0)
+  total_fail_count     BigInt?   @default(0)
+  total_success_millis BigInt?   @default(0)
+  total_fail_millis    BigInt?   @default(0)
+  batch_to_send_count  BigInt?   @default(0)
+  node_priority        Int?      @default(0)
+
+  @@id([node_id, queue, communication_type])
+}
+
+model sym_node_group {
+  node_group_id                                                                String                @id @db.VarChar(50)
+  description                                                                  String?               @db.VarChar(255)
+  create_time                                                                  DateTime?             @db.Timestamp(6)
+  last_update_by                                                               String?               @db.VarChar(50)
+  last_update_time                                                             DateTime?             @db.Timestamp(6)
+  sym_node_group_link_sym_node_group_link_source_node_group_idTosym_node_group sym_node_group_link[] @relation("sym_node_group_link_source_node_group_idTosym_node_group")
+  sym_node_group_link_sym_node_group_link_target_node_group_idTosym_node_group sym_node_group_link[] @relation("sym_node_group_link_target_node_group_idTosym_node_group")
+}
+
+model sym_node_group_channel_wnd {
+  node_group_id String   @db.VarChar(50)
+  channel_id    String   @db.VarChar(128)
+  start_time    DateTime @db.Timestamp(2)
+  end_time      DateTime @db.Timestamp(2)
+  enabled       Int      @default(0) @db.SmallInt
+
+  @@id([node_group_id, channel_id, start_time, end_time])
+}
+
+model sym_node_group_link {
+  source_node_group_id                                                    String                @db.VarChar(50)
+  target_node_group_id                                                    String                @db.VarChar(50)
+  data_event_action                                                       String                @default("W") @db.Char(1)
+  sync_config_enabled                                                     Int                   @default(1) @db.SmallInt
+  sync_sql_enabled                                                        Int                   @default(1) @db.SmallInt
+  is_reversible                                                           Int                   @default(0) @db.SmallInt
+  description                                                             String?               @db.VarChar(255)
+  create_time                                                             DateTime?             @db.Timestamp(6)
+  last_update_by                                                          String?               @db.VarChar(50)
+  last_update_time                                                        DateTime?             @db.Timestamp(6)
+  sym_conflict                                                            sym_conflict[]
+  sym_node_group_sym_node_group_link_source_node_group_idTosym_node_group sym_node_group        @relation("sym_node_group_link_source_node_group_idTosym_node_group", fields: [source_node_group_id], references: [node_group_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_lnk_2_grp_src")
+  sym_node_group_sym_node_group_link_target_node_group_idTosym_node_group sym_node_group        @relation("sym_node_group_link_target_node_group_idTosym_node_group", fields: [target_node_group_id], references: [node_group_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_lnk_2_grp_tgt")
+  sym_router                                                              sym_router[]
+  sym_transform_table                                                     sym_transform_table[]
+
+  @@id([source_node_group_id, target_node_group_id])
+}
+
+model sym_node_host {
+  node_id              String    @db.VarChar(50)
+  host_name            String    @db.VarChar(60)
+  instance_id          String?   @db.VarChar(60)
+  ip_address           String?   @db.VarChar(50)
+  os_user              String?   @db.VarChar(50)
+  os_name              String?   @db.VarChar(50)
+  os_arch              String?   @db.VarChar(50)
+  os_version           String?   @db.VarChar(50)
+  available_processors Int?      @default(0)
+  free_memory_bytes    BigInt?   @default(0)
+  total_memory_bytes   BigInt?   @default(0)
+  max_memory_bytes     BigInt?   @default(0)
+  java_version         String?   @db.VarChar(50)
+  java_vendor          String?   @db.VarChar(255)
+  jdbc_version         String?   @db.VarChar(255)
+  symmetric_version    String?   @db.VarChar(50)
+  timezone_offset      String?   @db.VarChar(6)
+  heartbeat_time       DateTime? @db.Timestamp(6)
+  last_restart_time    DateTime  @db.Timestamp(6)
+  create_time          DateTime  @db.Timestamp(6)
+
+  @@id([node_id, host_name])
+}
+
+model sym_node_host_channel_stats {
+  node_id                     String    @db.VarChar(50)
+  host_name                   String    @db.VarChar(60)
+  channel_id                  String    @db.VarChar(128)
+  start_time                  DateTime  @db.Timestamp(2)
+  end_time                    DateTime  @db.Timestamp(2)
+  data_routed                 BigInt?   @default(0)
+  data_unrouted               BigInt?   @default(0)
+  data_event_inserted         BigInt?   @default(0)
+  data_extracted              BigInt?   @default(0)
+  data_bytes_extracted        BigInt?   @default(0)
+  data_extracted_errors       BigInt?   @default(0)
+  data_bytes_sent             BigInt?   @default(0)
+  data_sent                   BigInt?   @default(0)
+  data_sent_errors            BigInt?   @default(0)
+  data_received               BigInt?   @default(0)
+  data_bytes_received         BigInt?   @default(0)
+  data_loaded                 BigInt?   @default(0)
+  data_bytes_loaded           BigInt?   @default(0)
+  data_loaded_errors          BigInt?   @default(0)
+  data_loaded_outgoing        BigInt?   @default(0)
+  data_bytes_loaded_outgoing  BigInt?   @default(0)
+  data_loaded_outgoing_errors BigInt?   @default(0)
+  data_min_create_time        DateTime? @db.Timestamp(6)
+  data_max_create_time        DateTime? @db.Timestamp(6)
+
+  @@id([node_id, host_name, channel_id, start_time, end_time])
+  @@index([node_id, start_time, end_time], map: "sym_idx_nd_hst_chnl_sts")
+}
+
+model sym_node_host_job_stats {
+  node_id           String   @db.VarChar(50)
+  host_name         String   @db.VarChar(60)
+  job_name          String   @db.VarChar(50)
+  start_time        DateTime @db.Timestamp(2)
+  end_time          DateTime @db.Timestamp(2)
+  processed_count   BigInt?  @default(0)
+  error_flag        Int?     @default(0) @db.SmallInt
+  error_message     String?
+  target_node_id    String?  @db.VarChar(50)
+  target_node_count Int?     @default(0)
+
+  @@id([node_id, host_name, job_name, start_time, end_time])
+  @@index([node_id, start_time, end_time], map: "sym_idx_nd_hst_job")
+}
+
+model sym_node_host_stats {
+  node_id                    String   @db.VarChar(50)
+  host_name                  String   @db.VarChar(60)
+  start_time                 DateTime @db.Timestamp(2)
+  end_time                   DateTime @db.Timestamp(2)
+  restarted                  BigInt   @default(0)
+  nodes_pulled               BigInt?  @default(0)
+  total_nodes_pull_time      BigInt?  @default(0)
+  nodes_pushed               BigInt?  @default(0)
+  total_nodes_push_time      BigInt?  @default(0)
+  nodes_rejected             BigInt?  @default(0)
+  nodes_registered           BigInt?  @default(0)
+  nodes_loaded               BigInt?  @default(0)
+  nodes_disabled             BigInt?  @default(0)
+  purged_data_rows           BigInt?  @default(0)
+  purged_data_event_rows     BigInt?  @default(0)
+  purged_stranded_data_rows  BigInt?  @default(0)
+  purged_stranded_event_rows BigInt?  @default(0)
+  purged_expired_data_rows   BigInt?  @default(0)
+  purged_batch_outgoing_rows BigInt?  @default(0)
+  purged_batch_incoming_rows BigInt?  @default(0)
+  triggers_created_count     BigInt?
+  triggers_rebuilt_count     BigInt?
+  triggers_removed_count     BigInt?
+  data_gap_count             BigInt?
+  data_unrouted_count        BigInt?
+
+  @@id([node_id, host_name, start_time, end_time])
+  @@index([node_id, start_time, end_time], map: "sym_idx_nd_hst_sts")
+}
+
+model sym_node_identity {
+  node_id  String   @id @db.VarChar(50)
+  sym_node sym_node @relation(fields: [node_id], references: [node_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_ident_2_node")
+}
+
+model sym_node_security {
+  node_id                    String    @id @db.VarChar(50)
+  node_password              String    @db.VarChar(50)
+  registration_enabled       Int?      @default(0) @db.SmallInt
+  registration_time          DateTime? @db.Timestamp(6)
+  registration_not_before    DateTime? @db.Timestamp(6)
+  registration_not_after     DateTime? @db.Timestamp(6)
+  initial_load_enabled       Int?      @default(0) @db.SmallInt
+  initial_load_time          DateTime? @db.Timestamp(6)
+  initial_load_end_time      DateTime? @db.Timestamp(6)
+  initial_load_id            BigInt?
+  initial_load_create_by     String?   @db.VarChar(255)
+  partial_load_time          DateTime? @db.Timestamp(6)
+  partial_load_end_time      DateTime? @db.Timestamp(6)
+  partial_load_id            BigInt?
+  partial_load_create_by     String?   @db.VarChar(255)
+  rev_initial_load_enabled   Int?      @default(0) @db.SmallInt
+  rev_initial_load_time      DateTime? @db.Timestamp(6)
+  rev_initial_load_id        BigInt?
+  rev_initial_load_create_by String?   @db.VarChar(255)
+  failed_logins              Int?      @default(0) @db.SmallInt
+  created_at_node_id         String?   @db.VarChar(50)
+  sym_node                   sym_node  @relation(fields: [node_id], references: [node_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_sec_2_node")
+}
+
+model sym_outgoing_batch {
+  batch_id                 BigInt
+  node_id                  String    @db.VarChar(50)
+  channel_id               String?   @db.VarChar(128)
+  status                   String?   @db.Char(2)
+  error_flag               Int?      @default(0) @db.SmallInt
+  sql_state                String?   @db.VarChar(10)
+  sql_code                 Int       @default(0)
+  sql_message              String?
+  last_update_hostname     String?   @db.VarChar(255)
+  last_update_time         DateTime? @db.Timestamp(6)
+  create_time              DateTime? @db.Timestamp(6)
+  summary                  String?   @db.VarChar(255)
+  ignore_count             Int       @default(0)
+  byte_count               BigInt    @default(0)
+  load_flag                Int?      @default(0) @db.SmallInt
+  extract_count            Int       @default(0)
+  sent_count               Int       @default(0)
+  load_count               Int       @default(0)
+  reload_row_count         Int       @default(0)
+  other_row_count          Int       @default(0)
+  data_row_count           Int       @default(0)
+  extract_row_count        Int       @default(0)
+  load_row_count           Int       @default(0)
+  data_insert_row_count    Int       @default(0)
+  data_update_row_count    Int       @default(0)
+  data_delete_row_count    Int       @default(0)
+  extract_insert_row_count Int       @default(0)
+  extract_update_row_count Int       @default(0)
+  extract_delete_row_count Int       @default(0)
+  load_insert_row_count    Int       @default(0)
+  load_update_row_count    Int       @default(0)
+  load_delete_row_count    Int       @default(0)
+  network_millis           Int       @default(0)
+  filter_millis            Int       @default(0)
+  load_millis              Int       @default(0)
+  router_millis            Int       @default(0)
+  extract_millis           Int       @default(0)
+  transform_extract_millis Int       @default(0)
+  transform_load_millis    Int       @default(0)
+  load_id                  BigInt?
+  thread_id                Int?
+  common_flag              Int?      @default(0) @db.SmallInt
+  fallback_insert_count    Int       @default(0)
+  fallback_update_count    Int       @default(0)
+  conflict_win_count       Int       @default(0)
+  conflict_lose_count      Int       @default(0)
+  ignore_row_count         Int       @default(0)
+  missing_delete_count     Int       @default(0)
+  skip_count               Int       @default(0)
+  total_extract_millis     Int       @default(0)
+  total_load_millis        Int       @default(0)
+  extract_job_flag         Int?      @default(0) @db.SmallInt
+  extract_start_time       DateTime? @db.Timestamp(6)
+  transfer_start_time      DateTime? @db.Timestamp(6)
+  load_start_time          DateTime? @db.Timestamp(6)
+  failed_data_id           BigInt    @default(0)
+  failed_line_number       BigInt    @default(0)
+  create_by                String?   @db.VarChar(255)
+  bulk_loader_flag         Int?      @default(0) @db.SmallInt
+  data_min_create_time     DateTime? @db.Timestamp(6)
+  data_max_create_time     DateTime? @db.Timestamp(6)
+
+  @@id([batch_id, node_id])
+  @@index([error_flag], map: "sym_idx_ob_in_error")
+  @@index([load_id], map: "sym_idx_ob_load_id")
+  @@index([node_id, status, channel_id], map: "sym_idx_ob_node_status")
+  @@index([status], map: "sym_idx_ob_status")
+}
+
+model sym_outgoing_error {
+  batch_id            BigInt
+  node_id             String    @db.VarChar(50)
+  failed_row_number   BigInt
+  failed_line_number  BigInt    @default(0)
+  target_catalog_name String?   @db.VarChar(255)
+  target_schema_name  String?   @db.VarChar(255)
+  target_table_name   String    @db.VarChar(255)
+  event_type          String    @db.Char(1)
+  binary_encoding     String    @default("HEX") @db.VarChar(10)
+  column_names        String
+  pk_column_names     String
+  row_data            String?
+  old_data            String?
+  cur_data            String?
+  resolve_data        String?
+  resolve_ignore      Int?      @default(0) @db.SmallInt
+  conflict_id         String?   @db.VarChar(50)
+  create_time         DateTime? @db.Timestamp(6)
+  last_update_by      String?   @db.VarChar(50)
+  last_update_time    DateTime  @db.Timestamp(6)
+
+  @@id([batch_id, node_id, failed_row_number])
+}
+
+model sym_parameter {
+  external_id      String    @db.VarChar(255)
+  node_group_id    String    @db.VarChar(50)
+  param_key        String    @db.VarChar(80)
+  param_value      String?
+  create_time      DateTime? @db.Timestamp(6)
+  last_update_by   String?   @db.VarChar(50)
+  last_update_time DateTime? @db.Timestamp(6)
+
+  @@id([external_id, node_group_id, param_key])
+}
+
+model sym_registration_redirect {
+  registrant_external_id String @id @db.VarChar(255)
+  registration_node_id   String @db.VarChar(50)
+}
+
+model sym_registration_request {
+  node_group_id      String   @db.VarChar(50)
+  external_id        String   @db.VarChar(255)
+  status             String   @db.Char(2)
+  host_name          String   @db.VarChar(60)
+  ip_address         String   @db.VarChar(50)
+  attempt_count      Int?     @default(0)
+  registered_node_id String?  @db.VarChar(50)
+  error_message      String?
+  create_time        DateTime @db.Timestamp(2)
+  last_update_by     String?  @db.VarChar(50)
+  last_update_time   DateTime @db.Timestamp(6)
+
+  @@id([node_group_id, external_id, create_time])
+  @@index([node_group_id, external_id, status, host_name, ip_address], map: "sym_idx_reg_req_1")
+  @@index([status], map: "sym_idx_reg_req_2")
+}
+
+model sym_router {
+  router_id                 String                    @id @db.VarChar(50)
+  target_catalog_name       String?                   @db.VarChar(255)
+  target_schema_name        String?                   @db.VarChar(255)
+  target_table_name         String?                   @db.VarChar(255)
+  source_node_group_id      String                    @db.VarChar(50)
+  target_node_group_id      String                    @db.VarChar(50)
+  router_type               String                    @default("default") @db.VarChar(50)
+  router_expression         String?
+  sync_on_update            Int                       @default(1) @db.SmallInt
+  sync_on_insert            Int                       @default(1) @db.SmallInt
+  sync_on_delete            Int                       @default(1) @db.SmallInt
+  use_source_catalog_schema Int                       @default(1) @db.SmallInt
+  create_time               DateTime                  @db.Timestamp(6)
+  last_update_by            String?                   @db.VarChar(50)
+  last_update_time          DateTime                  @db.Timestamp(6)
+  description               String?
+  sym_file_trigger_router   sym_file_trigger_router[]
+  sym_node_group_link       sym_node_group_link       @relation(fields: [source_node_group_id, target_node_group_id], references: [source_node_group_id, target_node_group_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_rt_2_grp_lnk")
+  sym_trigger_router        sym_trigger_router[]
+}
+
+model sym_sequence {
+  sequence_name    String    @id @db.VarChar(50)
+  current_value    BigInt    @default(0)
+  increment_by     Int       @default(1)
+  min_value        BigInt    @default(1)
+  max_value        BigInt    @default(9999999999)
+  cycle_flag       Int?      @default(0) @db.SmallInt
+  cache_size       Int       @default(0)
+  create_time      DateTime? @db.Timestamp(6)
+  last_update_by   String?   @db.VarChar(50)
+  last_update_time DateTime  @db.Timestamp(6)
+}
+
+model sym_table_reload_request {
+  target_node_id    String    @db.VarChar(50)
+  source_node_id    String    @db.VarChar(50)
+  trigger_id        String    @db.VarChar(128)
+  router_id         String    @db.VarChar(50)
+  create_time       DateTime  @db.Timestamp(2)
+  create_table      Int       @default(0) @db.SmallInt
+  delete_first      Int       @default(0) @db.SmallInt
+  reload_select     String?
+  before_custom_sql String?
+  reload_time       DateTime? @db.Timestamp(6)
+  load_id           BigInt?
+  processed         Int       @default(0) @db.SmallInt
+  channel_id        String?   @db.VarChar(128)
+  last_update_by    String?   @db.VarChar(50)
+  last_update_time  DateTime  @db.Timestamp(6)
+
+  @@id([target_node_id, source_node_id, trigger_id, router_id, create_time])
+}
+
+model sym_table_reload_status {
+  load_id               BigInt
+  source_node_id        String    @db.VarChar(50)
+  target_node_id        String    @db.VarChar(50)
+  start_time            DateTime? @db.Timestamp(6)
+  end_time              DateTime? @db.Timestamp(6)
+  completed             Int       @default(0) @db.SmallInt
+  cancelled             Int       @default(0) @db.SmallInt
+  full_load             Int       @default(0) @db.SmallInt
+  start_data_batch_id   BigInt?
+  end_data_batch_id     BigInt?
+  setup_batch_count     BigInt    @default(0)
+  data_batch_count      BigInt    @default(0)
+  finalize_batch_count  BigInt    @default(0)
+  setup_batch_loaded    BigInt    @default(0)
+  data_batch_loaded     BigInt    @default(0)
+  finalize_batch_loaded BigInt    @default(0)
+  table_count           BigInt    @default(0)
+  rows_loaded           BigInt    @default(0)
+  rows_count            BigInt    @default(0)
+  error_flag            Int       @default(0) @db.SmallInt
+  error_batch_id        BigInt?
+  sql_state             String?   @db.VarChar(10)
+  sql_code              Int       @default(0)
+  sql_message           String?
+  last_update_by        String?   @db.VarChar(50)
+  last_update_time      DateTime  @db.Timestamp(6)
+  batch_bulk_load_count BigInt    @default(0)
+  row_bulk_load_count   BigInt    @default(0)
+
+  @@id([load_id, source_node_id])
+  @@index([target_node_id, source_node_id, completed, cancelled], map: "sym_idx_tbl_rld_sts")
+}
+
+model sym_transform_column {
+  transform_id         String    @db.VarChar(50)
+  include_on           String    @default("*") @db.Char(1)
+  target_column_name   String    @db.VarChar(128)
+  source_column_name   String?   @db.VarChar(128)
+  pk                   Int?      @default(0) @db.SmallInt
+  transform_type       String?   @default("copy") @db.VarChar(50)
+  transform_expression String?
+  transform_order      Int       @default(1)
+  create_time          DateTime? @db.Timestamp(6)
+  last_update_by       String?   @db.VarChar(50)
+  last_update_time     DateTime? @db.Timestamp(6)
+  description          String?
+
+  @@id([transform_id, include_on, target_column_name])
+}
+
+model sym_transform_table {
+  transform_id         String              @db.VarChar(50)
+  source_node_group_id String              @db.VarChar(50)
+  target_node_group_id String              @db.VarChar(50)
+  transform_point      String              @db.VarChar(10)
+  source_catalog_name  String?             @db.VarChar(255)
+  source_schema_name   String?             @db.VarChar(255)
+  source_table_name    String              @db.VarChar(255)
+  target_catalog_name  String?             @db.VarChar(255)
+  target_schema_name   String?             @db.VarChar(255)
+  target_table_name    String?             @db.VarChar(255)
+  update_first         Int?                @default(0) @db.SmallInt
+  update_action        String              @default("UPDATE_COL") @db.VarChar(255)
+  delete_action        String              @db.VarChar(10)
+  transform_order      Int                 @default(1)
+  column_policy        String              @default("SPECIFIED") @db.VarChar(10)
+  create_time          DateTime?           @db.Timestamp(6)
+  last_update_by       String?             @db.VarChar(50)
+  last_update_time     DateTime?           @db.Timestamp(6)
+  description          String?
+  sym_node_group_link  sym_node_group_link @relation(fields: [source_node_group_id, target_node_group_id], references: [source_node_group_id, target_node_group_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_tt_2_grp_lnk")
+
+  @@id([transform_id, source_node_group_id, target_node_group_id])
+}
+
+model sym_trigger {
+  trigger_id                                             String               @id @db.VarChar(128)
+  source_catalog_name                                    String?              @db.VarChar(255)
+  source_schema_name                                     String?              @db.VarChar(255)
+  source_table_name                                      String               @db.VarChar(255)
+  channel_id                                             String               @db.VarChar(128)
+  reload_channel_id                                      String               @default("reload") @db.VarChar(128)
+  sync_on_update                                         Int                  @default(1) @db.SmallInt
+  sync_on_insert                                         Int                  @default(1) @db.SmallInt
+  sync_on_delete                                         Int                  @default(1) @db.SmallInt
+  sync_on_incoming_batch                                 Int                  @default(0) @db.SmallInt
+  name_for_update_trigger                                String?              @db.VarChar(255)
+  name_for_insert_trigger                                String?              @db.VarChar(255)
+  name_for_delete_trigger                                String?              @db.VarChar(255)
+  sync_on_update_condition                               String?
+  sync_on_insert_condition                               String?
+  sync_on_delete_condition                               String?
+  custom_before_update_text                              String?
+  custom_before_insert_text                              String?
+  custom_before_delete_text                              String?
+  custom_on_update_text                                  String?
+  custom_on_insert_text                                  String?
+  custom_on_delete_text                                  String?
+  external_select                                        String?
+  tx_id_expression                                       String?
+  channel_expression                                     String?
+  excluded_column_names                                  String?
+  included_column_names                                  String?
+  sync_key_names                                         String?
+  use_stream_lobs                                        Int                  @default(0) @db.SmallInt
+  use_capture_lobs                                       Int                  @default(0) @db.SmallInt
+  use_capture_old_data                                   Int                  @default(1) @db.SmallInt
+  use_handle_key_updates                                 Int                  @default(1) @db.SmallInt
+  stream_row                                             Int                  @default(0) @db.SmallInt
+  capture_changes_only                                   Int                  @default(0) @db.SmallInt
+  time_based_column_name                                 String?              @db.VarChar(255)
+  create_time                                            DateTime             @db.Timestamp(6)
+  last_update_by                                         String?              @db.VarChar(50)
+  last_update_time                                       DateTime             @db.Timestamp(6)
+  description                                            String?
+  sym_channel_sym_trigger_channel_idTosym_channel        sym_channel          @relation("sym_trigger_channel_idTosym_channel", fields: [channel_id], references: [channel_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_trg_2_chnl")
+  sym_channel_sym_trigger_reload_channel_idTosym_channel sym_channel          @relation("sym_trigger_reload_channel_idTosym_channel", fields: [reload_channel_id], references: [channel_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_trg_2_rld_chnl")
+  sym_trigger_router                                     sym_trigger_router[]
+}
+
+model sym_trigger_hist {
+  trigger_hist_id           Int       @id
+  trigger_id                String    @db.VarChar(128)
+  source_table_name         String    @db.VarChar(255)
+  source_catalog_name       String?   @db.VarChar(255)
+  source_schema_name        String?   @db.VarChar(255)
+  name_for_update_trigger   String?   @db.VarChar(255)
+  name_for_insert_trigger   String?   @db.VarChar(255)
+  name_for_delete_trigger   String?   @db.VarChar(255)
+  table_hash                BigInt    @default(0)
+  trigger_row_hash          BigInt    @default(0)
+  trigger_template_hash     BigInt    @default(0)
+  column_names              String
+  pk_column_names           String
+  is_missing_pk             Int       @default(0) @db.SmallInt
+  last_trigger_build_reason String    @db.Char(1)
+  error_message             String?
+  create_time               DateTime  @db.Timestamp(6)
+  inactive_time             DateTime? @db.Timestamp(6)
+
+  @@index([trigger_id, inactive_time], map: "sym_idx_trigg_hist_1")
+}
+
+model sym_trigger_router {
+  trigger_id                  String                        @db.VarChar(128)
+  router_id                   String                        @db.VarChar(50)
+  enabled                     Int                           @default(1) @db.SmallInt
+  initial_load_order          Int                           @default(1)
+  initial_load_select         String?
+  initial_load_delete_stmt    String?
+  ping_back_enabled           Int                           @default(0) @db.SmallInt
+  create_time                 DateTime                      @db.Timestamp(6)
+  last_update_by              String?                       @db.VarChar(50)
+  last_update_time            DateTime                      @db.Timestamp(6)
+  description                 String?
+  data_refresh_type           String?                       @db.VarChar(50)
+  data_refresh_job_name       String                        @default("CDC") @db.VarChar(50)
+  sym_router                  sym_router                    @relation(fields: [router_id], references: [router_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_tr_2_rtr")
+  sym_trigger                 sym_trigger                   @relation(fields: [trigger_id], references: [trigger_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_tr_2_trg")
+  sym_trigger_router_grouplet sym_trigger_router_grouplet[]
+
+  @@id([trigger_id, router_id])
+}
+
+model sym_trigger_router_grouplet {
+  grouplet_id        String             @db.VarChar(50)
+  trigger_id         String             @db.VarChar(128)
+  router_id          String             @db.VarChar(50)
+  applies_when       String             @db.Char(1)
+  create_time        DateTime           @db.Timestamp(6)
+  last_update_by     String?            @db.VarChar(50)
+  last_update_time   DateTime           @db.Timestamp(6)
+  sym_grouplet       sym_grouplet       @relation(fields: [grouplet_id], references: [grouplet_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_trgplt_2_gplt")
+  sym_trigger_router sym_trigger_router @relation(fields: [trigger_id, router_id], references: [trigger_id, router_id], onDelete: NoAction, onUpdate: NoAction, map: "sym_fk_trgplt_2_tr")
+
+  @@id([grouplet_id, trigger_id, router_id, applies_when])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sync_log {
+  id                BigInt              @id @default(autoincrement())
+  device_id         String              @db.Uuid
+  entity_type       String              @db.VarChar(100)
+  entity_id         String              @db.Uuid
+  operation         sync_operation_enum
+  payload           Json
+  client_version    Int?
+  server_seq        BigInt?
+  conflict_resolved Boolean             @default(false)
+  conflict_notes    String?
+  synced_at         DateTime            @default(now()) @db.Timestamptz(6)
+
+  @@index([device_id, synced_at(sort: Desc)], map: "idx_sync_log_device")
+  @@index([entity_type, entity_id], map: "idx_sync_log_entity")
+  @@index([server_seq], map: "idx_sync_log_seq")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model units_of_measure {
+  id                         String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name_ar                    String                       @db.VarChar(100)
+  name_en                    String?                      @db.VarChar(100)
+  symbol                     String?                      @db.VarChar(20)
+  parent_unit_id             String?                      @db.Uuid
+  conversion_factor          Decimal                      @default(1) @db.Decimal(15, 6)
+  is_base_unit               Boolean                      @default(false)
+  is_active                  Boolean                      @default(true)
+  created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  ecommerce_cart_items       ecommerce_cart_items[]
+  ecommerce_order_items      ecommerce_order_items[]
+  ecommerce_product_settings ecommerce_product_settings[]
+  product_allowed_units      product_allowed_units[]
+  product_prices             product_prices[]
+  products                   products[]
+  purchase_invoice_items     purchase_invoice_items[]
+  sales_invoice_items        sales_invoice_items[]
+  parent_unit                units_of_measure?            @relation("UnitHierarchy", fields: [parent_unit_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  sub_units                  units_of_measure[]           @relation("UnitHierarchy")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model users {
+  id                                                           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username                                                     String                 @unique @db.VarChar(100)
+  email                                                        String?                @unique @db.VarChar(150)
+  password_hash                                                String
+  full_name                                                    String?                @db.VarChar(200)
+  phone                                                        String?                @db.VarChar(20)
+  role_id                                                      String?                @db.Uuid
+  branch_id                                                    String?                @db.Uuid
+  avatar_url                                                   String?
+  is_active                                                    Boolean                @default(true)
+  last_login                                                   DateTime?              @db.Timestamptz(6)
+  refresh_token                                                String?
+  created_at                                                   DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at                                                   DateTime               @default(now()) @db.Timestamptz(6)
+  created_by                                                   String?                @db.Uuid
+  branches_created                                             branches[]             @relation("BranchCreator")
+  branches_managed                                             branches[]             @relation("BranchManager")
+  cashbox_sessions_cashbox_sessions_closed_byTousers           cashbox_sessions[]     @relation("cashbox_sessions_closed_byTousers")
+  cashbox_sessions_cashbox_sessions_opened_byTousers           cashbox_sessions[]     @relation("cashbox_sessions_opened_byTousers")
+  cashboxes                                                    cashboxes[]
+  customers                                                    customers[]
+  device_sync_state                                            device_sync_state[]
+  ecommerce_carts                                              ecommerce_carts?
+  ecommerce_orders_accepted                                    ecommerce_orders[]     @relation("EcommerceOrderApprover")
+  ecommerce_orders_cancelled                                   ecommerce_orders[]     @relation("EcommerceOrderCanceller")
+  ecommerce_orders_rejected                                    ecommerce_orders[]     @relation("EcommerceOrderRejector")
+  ecommerce_orders_placed                                      ecommerce_orders[]     @relation("EcommerceOrderUser")
+  inventory_movements                                          inventory_movements[]
+  payment_vouchers                                             payment_vouchers[]
+  products                                                     products[]
+  purchase_invoices                                            purchase_invoices[]
+  rep_custody_orders                                           rep_custody_orders[]
+  representatives                                              representatives?
+  sales_invoices                                               sales_invoices[]
+  stocktaking_sessions_stocktaking_sessions_approved_byTousers stocktaking_sessions[] @relation("stocktaking_sessions_approved_byTousers")
+  stocktaking_sessions_stocktaking_sessions_created_byTousers  stocktaking_sessions[] @relation("stocktaking_sessions_created_byTousers")
+  suppliers                                                    suppliers[]
+  branches_users_branch_idTobranches                           branches?              @relation("users_branch_idTobranches", fields: [branch_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_branch")
+  users                                                        users?                 @relation("usersTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_users                                                  users[]                @relation("usersTousers")
+  roles                                                        roles?                 @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse_keepers                                            warehouse_keepers[]
+  warehouse_transfers_warehouse_transfers_approved_byTousers   warehouse_transfers[]  @relation("warehouse_transfers_approved_byTousers")
+  warehouse_transfers_warehouse_transfers_created_byTousers    warehouse_transfers[]  @relation("warehouse_transfers_created_byTousers")
+  warehouse_transfers_warehouse_transfers_dispatched_byTousers warehouse_transfers[]  @relation("warehouse_transfers_dispatched_byTousers")
+  warehouse_transfers_warehouse_transfers_received_byTousers   warehouse_transfers[]  @relation("warehouse_transfers_received_byTousers")
+  warehouses_created                                           warehouses[]           @relation("WarehouseCreator")
+  warehouses_managed                                           warehouses[]           @relation("WarehouseManager")
+
+  @@index([branch_id], map: "idx_users_branch")
+  @@index([role_id], map: "idx_users_role")
+  @@index([username], map: "idx_users_username")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model warehouse_transfer_items {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transfer_id         String              @db.Uuid
+  variant_id          String              @db.Uuid
+  batch_id            String?             @db.Uuid
+  serial_id           String?             @db.Uuid
+  quantity_sent       Decimal             @db.Decimal(15, 3)
+  quantity_received   Decimal             @default(0) @db.Decimal(15, 3)
+  quantity_shortage   Decimal             @default(0) @db.Decimal(15, 3)
+  quantity_damaged    Decimal             @default(0) @db.Decimal(15, 3)
+  product_batches     product_batches?    @relation(fields: [batch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  serials             serials?            @relation(fields: [serial_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse_transfers warehouse_transfers @relation(fields: [transfer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product_variants    product_variants    @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model warehouse_transfers {
+  id                                                                  String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transfer_number                                                     String                     @unique @db.VarChar(50)
+  source_warehouse_id                                                 String                     @db.Uuid
+  destination_warehouse_id                                            String                     @db.Uuid
+  status                                                              transfer_status_enum       @default(PENDING)
+  dispatch_date                                                       DateTime?                  @db.Timestamptz(6)
+  receive_date                                                        DateTime?                  @db.Timestamptz(6)
+  notes                                                               String?
+  idempotency_key                                                     String?                    @unique @db.VarChar(200)
+  approved_by                                                         String?                    @db.Uuid
+  dispatched_by                                                       String?                    @db.Uuid
+  received_by                                                         String?                    @db.Uuid
+  created_at                                                          DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at                                                          DateTime                   @default(now()) @db.Timestamptz(6)
+  created_by                                                          String?                    @db.Uuid
+  warehouse_transfer_items                                            warehouse_transfer_items[]
+  users_warehouse_transfers_approved_byTousers                        users?                     @relation("warehouse_transfers_approved_byTousers", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_warehouse_transfers_created_byTousers                         users?                     @relation("warehouse_transfers_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses_warehouse_transfers_destination_warehouse_idTowarehouses warehouses                 @relation("warehouse_transfers_destination_warehouse_idTowarehouses", fields: [destination_warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_warehouse_transfers_dispatched_byTousers                      users?                     @relation("warehouse_transfers_dispatched_byTousers", fields: [dispatched_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_warehouse_transfers_received_byTousers                        users?                     @relation("warehouse_transfers_received_byTousers", fields: [received_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses_warehouse_transfers_source_warehouse_idTowarehouses      warehouses                 @relation("warehouse_transfers_source_warehouse_idTowarehouses", fields: [source_warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([destination_warehouse_id], map: "idx_transfers_dest")
+  @@index([source_warehouse_id], map: "idx_transfers_source")
+  @@index([status], map: "idx_transfers_status")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model warehouses {
+  id                                                                           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branch_id                                                                    String                 @db.Uuid
+  name                                                                         String                 @db.VarChar(200)
+  address                                                                      String?
+  type                                                                         warehouse_type_enum    @default(SUB)
+  created_at                                                                   DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at                                                                   DateTime               @default(now()) @db.Timestamptz(6)
+  capacity                                                                     Decimal?               @db.Decimal(10, 2)
+  code                                                                         String                 @unique @db.VarChar(50)
+  created_by                                                                   String?                @db.Uuid
+  manager_id                                                                   String?                @db.Uuid
+  notes                                                                        String?
+  parent_warehouse_id                                                          String?                @db.Uuid
+  rejection_reason                                                             String?
+  status                                                                       org_status_enum        @default(DRAFT)
+  inventory_movements                                                          inventory_movements[]
+  product_batches                                                              product_batches[]
+  purchase_invoices                                                            purchase_invoices[]
+  rep_custody_orders                                                           rep_custody_orders[]
+  sales_invoices                                                               sales_invoices[]
+  serials                                                                      serials[]
+  stock_levels                                                                 stock_levels[]
+  stocktaking_sessions                                                         stocktaking_sessions[]
+  keepers                                                                      warehouse_keepers[]
+  warehouse_transfers_warehouse_transfers_destination_warehouse_idTowarehouses warehouse_transfers[]  @relation("warehouse_transfers_destination_warehouse_idTowarehouses")
+  warehouse_transfers_warehouse_transfers_source_warehouse_idTowarehouses      warehouse_transfers[]  @relation("warehouse_transfers_source_warehouse_idTowarehouses")
+  branch                                                                       branches               @relation(fields: [branch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  creator                                                                      users?                 @relation("WarehouseCreator", fields: [created_by], references: [id])
+  manager                                                                      users?                 @relation("WarehouseManager", fields: [manager_id], references: [id])
+  parent_warehouse                                                             warehouses?            @relation("WarehouseHierarchy", fields: [parent_warehouse_id], references: [id], onDelete: Restrict)
+  sub_warehouses                                                               warehouses[]           @relation("WarehouseHierarchy")
+
+  @@index([branch_id, status])
+  @@index([parent_warehouse_id])
+}
+
+model warehouse_keepers {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id String     @db.Uuid
+  user_id      String     @db.Uuid
+  assigned_at  DateTime   @default(now()) @db.Timestamptz(6)
+  user         users      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  warehouse    warehouses @relation(fields: [warehouse_id], references: [id], onDelete: Cascade)
+
+  @@unique([warehouse_id, user_id])
+}
+
+model ecommerce_product_settings {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  variant_id       String               @db.Uuid
+  unit_id          String               @db.Uuid
+  is_enabled       Boolean              @default(true)
+  commission_type  commission_type_enum @default(PERCENT)
+  commission_value Decimal              @default(0) @db.Decimal(15, 4)
+  sort_order       Int                  @default(0)
+  created_at       DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime             @default(now()) @updatedAt @db.Timestamptz(6)
+  unit             units_of_measure     @relation(fields: [unit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  variant          product_variants     @relation(fields: [variant_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([variant_id, unit_id])
+  @@index([variant_id])
+  @@index([is_enabled])
+}
+
+model ecommerce_carts {
+  id            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String?                     @unique @db.Uuid
+  session_token String?                     @unique @db.VarChar(150)
+  source        ecommerce_order_source_enum
+  created_at    DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime                    @default(now()) @updatedAt @db.Timestamptz(6)
+  items         ecommerce_cart_items[]
+  user          users?                      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([source])
+}
+
+model ecommerce_cart_items {
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cart_id    String           @db.Uuid
+  variant_id String           @db.Uuid
+  unit_id    String           @db.Uuid
+  quantity   Decimal          @db.Decimal(15, 3)
+  created_at DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at DateTime         @default(now()) @updatedAt @db.Timestamptz(6)
+  cart       ecommerce_carts  @relation(fields: [cart_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  unit       units_of_measure @relation(fields: [unit_id], references: [id], onUpdate: NoAction)
+  variant    product_variants @relation(fields: [variant_id], references: [id], onUpdate: NoAction)
+
+  @@unique([cart_id, variant_id, unit_id])
+  @@index([cart_id])
+  @@index([variant_id])
+  @@index([unit_id])
+}
+
+model ecommerce_orders {
+  id                  String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_number        String                      @unique @db.VarChar(50)
+  source              ecommerce_order_source_enum
+  status              ecommerce_order_status_enum @default(SUBMITTED)
+  user_id             String?                     @db.Uuid
+  rep_id              String?                     @db.Uuid
+  party_type          ecommerce_party_type_enum?
+  party_id            String?                     @db.Uuid
+  party_name          String?                     @db.VarChar(300)
+  party_phone         String?                     @db.VarChar(50)
+  party_address       String?
+  customer_name       String?                     @db.VarChar(300)
+  customer_phone      String?                     @db.VarChar(50)
+  customer_email      String?                     @db.VarChar(150)
+  customer_address    String?
+  payment_type        sales_payment_enum          @default(CASH)
+  notes               String?
+  subtotal            Decimal                     @default(0) @db.Decimal(15, 2)
+  discount_amount     Decimal                     @default(0) @db.Decimal(15, 2)
+  total               Decimal                     @default(0) @db.Decimal(15, 2)
+  submitted_at        DateTime                    @default(now()) @db.Timestamptz(6)
+  accepted_at         DateTime?                   @db.Timestamptz(6)
+  accepted_by         String?                     @db.Uuid
+  rejected_at         DateTime?                   @db.Timestamptz(6)
+  rejected_by         String?                     @db.Uuid
+  rejection_reason    String?
+  cancelled_at        DateTime?                   @db.Timestamptz(6)
+  cancelled_by        String?                     @db.Uuid
+  cancellation_reason String?
+  sales_invoice_id    String?                     @unique @db.Uuid
+  public_token        String?                     @unique @db.VarChar(150)
+  idempotency_key     String?                     @unique @db.VarChar(200)
+  created_at          DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime                    @default(now()) @updatedAt @db.Timestamptz(6)
+  items               ecommerce_order_items[]
+  approver            users?                      @relation("EcommerceOrderApprover", fields: [accepted_by], references: [id], onUpdate: NoAction)
+  canceller           users?                      @relation("EcommerceOrderCanceller", fields: [cancelled_by], references: [id], onUpdate: NoAction)
+  rejector            users?                      @relation("EcommerceOrderRejector", fields: [rejected_by], references: [id], onUpdate: NoAction)
+  representative      representatives?            @relation(fields: [rep_id], references: [id], onUpdate: NoAction)
+  sales_invoice       sales_invoices?             @relation(fields: [sales_invoice_id], references: [id], onUpdate: NoAction)
+  user                users?                      @relation("EcommerceOrderUser", fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([status])
+  @@index([source])
+  @@index([user_id])
+  @@index([rep_id])
+  @@index([party_type, party_id])
+  @@index([customer_phone])
+  @@index([submitted_at])
+}
+
+model ecommerce_order_items {
+  id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id          String                @db.Uuid
+  product_id        String                @db.Uuid
+  variant_id        String                @db.Uuid
+  unit_id           String                @db.Uuid
+  product_name      String                @db.VarChar(300)
+  variant_snapshot  Json                  @default("{}")
+  unit_name         String?               @db.VarChar(100)
+  quantity          Decimal               @db.Decimal(15, 3)
+  price_type        price_type_enum
+  base_price        Decimal               @db.Decimal(15, 4)
+  commission_type   commission_type_enum?
+  commission_value  Decimal               @default(0) @db.Decimal(15, 4)
+  commission_amount Decimal               @default(0) @db.Decimal(15, 4)
+  unit_price        Decimal               @db.Decimal(15, 4)
+  line_total        Decimal               @db.Decimal(15, 2)
+  created_at        DateTime              @default(now()) @db.Timestamptz(6)
+  order             ecommerce_orders      @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product           products              @relation(fields: [product_id], references: [id], onUpdate: NoAction)
+  unit              units_of_measure      @relation(fields: [unit_id], references: [id], onUpdate: NoAction)
+  variant           product_variants      @relation(fields: [variant_id], references: [id], onUpdate: NoAction)
+
+  @@index([order_id])
+  @@index([product_id])
+  @@index([variant_id])
+  @@index([unit_id])
+}
+
+enum account_type_enum {
+  CUSTOMER
+  SUPPLIER
+  REPRESENTATIVE
+}
+
+enum adjustment_type_enum {
+  NONE
+  ADD
+  REDUCE
+}
+
+enum cashbox_status_enum {
+  OPEN
+  CLOSED
+}
+
+enum commission_type_enum {
+  PERCENT
+  FIXED
+}
+
+enum custody_status_enum {
+  PENDING
+  APPROVED
+  DISPATCHED
+  PARTIALLY_RETURNED
+  FULLY_RETURNED
+  CANCELLED
+}
+
+enum customer_type_enum {
+  RETAIL
+  WHOLESALE
+}
+
+enum movement_type_enum {
+  IN
+  OUT
+  TRANSFER_OUT
+  TRANSFER_IN
+  ADJUST_ADD
+  ADJUST_REDUCE
+  RETURN_IN
+  RETURN_OUT
+}
+
+enum payment_method_enum {
+  CASH
+  BANK_TRANSFER
+  CHECK
+  POS_MACHINE
+}
+
+enum price_type_enum {
+  RETAIL
+  WHOLESALE
+  REP
+  COST
+}
+
+enum purchase_payment_enum {
+  CASH
+  CREDIT
+  PARTIAL
+}
+
+enum purchase_status_enum {
+  DRAFT
+  CONFIRMED
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum rep_status_enum {
+  ACTIVE
+  INACTIVE
+}
+
+enum sales_payment_enum {
+  CASH
+  CREDIT
+  PARTIAL
+  REP_CUSTODY
+}
+
+enum sales_status_enum {
+  DRAFT
+  PAID
+  PARTIAL
+  OVERDUE
+  CANCELLED
+  RETURNED
+}
+
+enum serial_status_enum {
+  IN_STOCK
+  SOLD
+  IN_CUSTODY
+  RETURNED
+}
+
+enum stocktaking_status_enum {
+  OPEN
+  COUNTING
+  PENDING_REVIEW
+  PENDING_VALUATION
+  APPROVED
+  CANCELLED
+}
+
+enum stocktaking_type_enum {
+  BLIND
+  VISIBLE
+}
+
+enum sync_operation_enum {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum transfer_status_enum {
+  PENDING
+  APPROVED
+  DISPATCHED
+  RECEIVED
+  CANCELLED
+}
+
+enum voucher_type_enum {
+  RECEIPT
+  PAYMENT
+}
+
+enum warehouse_type_enum {
+  MAIN
+  SUB
+  VIRTUAL
+}
+
+enum org_status_enum {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  REJECTED
+  INACTIVE
+}
+
+enum branch_type_enum {
+  HEADQUARTERS
+  STANDARD
+}
+
+enum ecommerce_order_source_enum {
+  GUEST
+  REPRESENTATIVE
+}
+
+enum ecommerce_order_status_enum {
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum ecommerce_party_type_enum {
+  CUSTOMER
+  SUPPLIER
+  BRANCH
+  REPRESENTATIVE
+  OTHER
+}

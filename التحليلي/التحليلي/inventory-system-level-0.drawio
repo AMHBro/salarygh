@@ -1,0 +1,174 @@
+<mxfile host="Electron" modified="2026-08-12T19:32:49.633Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/21.4.0 Chrome/112.0.5615.204 Electron/24.5.1 Safari/537.36" version="21.4.0" etag="OptGuCMrgpzXHTVa0-Ti" type="device">
+  <diagram id="inventory-level-0" name="خريطة النظام العامة">
+    <mxGraphModel dx="2056" dy="1178" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="خريطة العمليات العامة لنظام المخازن والمبيعات — Level 0" style="text;html=1;align=center;verticalAlign=middle;fontSize=26;fontStyle=1;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="300" y="20" width="1200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="start" value="احتياج السوق أو المخزون" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="45" y="137.5" width="120" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="supply" value="التوريد والمشتريات" style="swimlane;html=1;horizontal=1;startSize=38;rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Arial;fontSize=17;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="205" y="95" width="330" height="315" as="geometry" />
+        </mxCell>
+        <mxCell id="p01" value="P01&#xa;المشتريات والموردون" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9e6;strokeColor=#d6b656;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="supply" vertex="1">
+          <mxGeometry x="35" y="65" width="260" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p02" value="P02&#xa;الاستلام والفحص" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9e6;strokeColor=#d6b656;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="supply" vertex="1">
+          <mxGeometry x="35" y="175" width="260" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="inventory" value="المخزون والرقابة" style="swimlane;html=1;horizontal=1;startSize=38;rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Arial;fontSize=17;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="585" y="95" width="355" height="535" as="geometry" />
+        </mxCell>
+        <mxCell id="p03" value="P03&#xa;إدارة المخزون" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ed;strokeColor=#82b366;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="inventory" vertex="1">
+          <mxGeometry x="45" y="65" width="265" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p09" value="P09&#xa;التحويل بين المخازن" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ed;strokeColor=#82b366;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="inventory" vertex="1">
+          <mxGeometry x="45" y="175" width="265" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p10" value="P10&#xa;الجرد والتسويات" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ed;strokeColor=#82b366;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="inventory" vertex="1">
+          <mxGeometry x="45" y="285" width="265" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p08" value="P08&#xa;المرتجعات والفحص" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ed;strokeColor=#82b366;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="inventory" vertex="1">
+          <mxGeometry x="45" y="395" width="265" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="sales" value="قنوات البيع والتوزيع" style="swimlane;html=1;horizontal=1;startSize=38;rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;fontSize=17;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="990" y="95" width="355" height="425" as="geometry" />
+        </mxCell>
+        <mxCell id="p04" value="P04&#xa;المبيعات المباشرة" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#edf5ff;strokeColor=#6c8ebf;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="sales" vertex="1">
+          <mxGeometry x="45" y="65" width="265" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p05" value="P05&#xa;المندوبون والعُهد" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#edf5ff;strokeColor=#6c8ebf;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="sales" vertex="1">
+          <mxGeometry x="45" y="175" width="265" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p06" value="P06&#xa;المتجر الإلكتروني" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#edf5ff;strokeColor=#6c8ebf;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="sales" vertex="1">
+          <mxGeometry x="45" y="285" width="265" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="finance" value="التحصيل والحسابات" style="swimlane;html=1;horizontal=1;startSize=38;rounded=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontFamily=Arial;fontSize=17;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1395" y="95" width="330" height="315" as="geometry" />
+        </mxCell>
+        <mxCell id="p07" value="P07&#xa;التحصيل والصندوق" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4eef7;strokeColor=#9673a6;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="finance" vertex="1">
+          <mxGeometry x="35" y="65" width="260" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p11" value="P11&#xa;الحسابات العامة" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4eef7;strokeColor=#9673a6;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="finance" vertex="1">
+          <mxGeometry x="35" y="175" width="260" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="control" value="طبقة الإدارة والحوكمة" style="swimlane;html=1;horizontal=1;startSize=38;rounded=1;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;fontSize=17;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="205" y="690" width="1520" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="p12" value="P12 — الإدارة والموافقات&#xa;حدود الصلاحية • الاستثناءات • الاعتمادات • الفروع والمخازن" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0ef;strokeColor=#b85450;fontFamily=Arial;fontSize=16;fontStyle=1;" parent="control" vertex="1">
+          <mxGeometry x="55" y="65" width="650" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="p13" value="P13 — التقارير والتدقيق&#xa;التقارير التشغيلية والمالية • سجل الإجراءات • تتبع المستخدمين" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0ef;strokeColor=#b85450;fontFamily=Arial;fontSize=16;fontStyle=1;" parent="control" vertex="1">
+          <mxGeometry x="815" y="65" width="650" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="end" value="قرار إداري ومالي موثوق" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Arial;fontSize=15;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1510" y="500" width="130" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;" parent="1" source="start" target="p01" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" parent="1" source="p01" target="p02" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="المقبول بعد الفحص" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontFamily=Arial;fontSize=12;" parent="1" source="p02" target="p03" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="370" y="600" />
+              <mxPoint x="550" y="600" />
+              <mxPoint x="550" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" parent="1" source="p03" target="p04" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" parent="1" source="p03" target="p05" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="950" y="197" />
+              <mxPoint x="950" y="307" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" parent="1" source="p03" target="p06" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="990" y="197" />
+              <mxPoint x="990" y="417" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" parent="1" source="p04" target="p07" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" parent="1" source="p05" target="p07" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1360" y="307" />
+              <mxPoint x="1360" y="197" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" parent="1" source="p06" target="p07" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1400" y="417" />
+              <mxPoint x="1400" y="197" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" parent="1" source="p07" target="p11" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="مخزون بالطريق" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontFamily=Arial;fontSize=12;" parent="1" source="p03" target="p09" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;" parent="1" source="p03" target="p10" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="570" y="197" />
+              <mxPoint x="570" y="417" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" value="إعادة الصالح" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontFamily=Arial;fontSize=12;" parent="1" source="p08" target="p03" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="590" y="527" />
+              <mxPoint x="590" y="197" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e14" value="مرتجع" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontFamily=Arial;fontSize=12;" parent="1" source="p04" target="p08" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1320" y="198" />
+              <mxPoint x="1320" y="550" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" value="نتائج مالية وتشغيلية" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontFamily=Arial;fontSize=12;" parent="1" source="p11" target="end" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" value="رقابة واعتماد" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;endArrow=open;endFill=0;strokeColor=#b85450;fontFamily=Arial;fontSize=12;" parent="1" source="p12" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="590" y="290" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="585" y="523" />
+              <mxPoint x="560" y="523" />
+              <mxPoint x="560" y="290" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e17" value="تقارير وسجل تدقيق" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;endArrow=open;endFill=0;strokeColor=#b85450;fontFamily=Arial;fontSize=12;" parent="1" source="p13" target="p11" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1420" y="420" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

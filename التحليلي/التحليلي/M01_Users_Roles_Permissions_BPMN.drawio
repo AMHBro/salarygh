@@ -1,0 +1,343 @@
+<mxfile host="Electron" modified="2026-08-12T19:55:11.231Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/21.4.0 Chrome/112.0.5615.204 Electron/24.5.1 Safari/537.36" version="21.4.0" etag="ZqcwzWQkfogksltAtZ6I" type="device" pages="6">
+  <diagram id="84f66c7c7ac6" name="BPMN-USR-01 إنشاء مستخدم">
+    <mxGraphModel dx="1582" dy="906" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" value="" style="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="1" value="" style="" parent="0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s" value="بدء" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="70" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a" value="إدخال بيانات المستخدم" style="shape=mxgraph.bpmn.task;taskMarker=user;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="220" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="b" value="اختيار الدور ومعاينة النطاق" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="480" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="c" value="تحديد الصلاحيات المباشرة" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="740" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="g" value="البيانات صالحة؟" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="1000" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="d" value="إنشاء الحساب وتسجيل التدقيق" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="1260" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="e" value="الحساب نشط" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1520" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="r" value="رفض / تصحيح البيانات" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="760" y="430" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ed1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" source="s" target="a" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" source="a" target="b" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" source="b" target="c" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" source="c" target="g" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" source="g" target="d" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" source="d" target="e" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er1" value="لا" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" source="g" target="r" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1095" y="360" />
+              <mxPoint x="870" y="360" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="er2" value="إعادة المحاولة" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" source="r" target="a" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="03f2bafdbf8f" name="BPMN-USR-02 تسجيل الدخول">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" value="" style="" parent="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="1" value="" style="" parent="0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s" value="بدء" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="70" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a" value="إدخال البريد وكلمة المرور" style="shape=mxgraph.bpmn.task;taskMarker=user;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="220" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="b" value="التحقق من الحساب والحالة" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="480" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="g" value="صالح؟" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="740" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="d" value="إنشاء جلسة وإصدار الرموز" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="1000" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="e" value="دخول ناجح" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1260" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="r" value="رفض / تصحيح البيانات" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="760" y="430" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ed1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="s" target="a">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="a" target="b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="b" target="g">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="g" target="d">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="d" target="e">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er1" value="لا" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="g" target="r">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er2" value="إعادة المحاولة" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="r" target="a">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="6fac98e98163" name="BPMN-USR-03 تعيين الدور والنطاق">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" value="" style="" parent="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="1" value="" style="" parent="0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s" value="بدء" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="70" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a" value="اختيار الدور" style="shape=mxgraph.bpmn.task;taskMarker=user;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="220" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="b" value="استخراج الفروع والمخازن" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="480" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="c" value="معاينة نطاق الوصول" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="740" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="g" value="تأكيد؟" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="1000" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="d" value="حفظ التعيين وتسجيل التغيير" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="1260" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="e" value="تم" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1520" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="r" value="رفض / تصحيح البيانات" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="760" y="430" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ed1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="s" target="a">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="a" target="b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="b" target="c">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="c" target="g">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="g" target="d">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="d" target="e">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er1" value="لا" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="g" target="r">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er2" value="إعادة المحاولة" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="r" target="a">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="50729b0f71a0" name="BPMN-USR-04 تعديل الصلاحيات">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" value="" style="" parent="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="1" value="" style="" parent="0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s" value="بدء" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="70" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a" value="فتح مصفوفة الصلاحيات" style="shape=mxgraph.bpmn.task;taskMarker=user;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="220" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="b" value="إضافة أو سحب الصلاحيات" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="480" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="g" value="المسؤول مخول؟" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="740" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="d" value="حفظ الفروقات وتحديث Cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="1000" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="e" value="تم" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1260" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="r" value="رفض / تصحيح البيانات" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="760" y="430" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ed1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="s" target="a">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="a" target="b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="b" target="g">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="g" target="d">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="d" target="e">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er1" value="لا" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="g" target="r">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er2" value="إعادة المحاولة" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="r" target="a">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="b67296db2bfe" name="BPMN-USR-05 تعطيل المستخدم">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" value="" style="" parent="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="1" value="" style="" parent="0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s" value="بدء" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="70" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a" value="طلب التعطيل وكتابة السبب" style="shape=mxgraph.bpmn.task;taskMarker=user;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="220" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="g" value="يسمح بالتعطيل؟" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="480" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="b" value="تغيير الحالة إلى DISABLED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="740" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="c" value="إلغاء الجلسات والرموز" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="1000" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="e" value="الحساب معطل" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1260" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="r" value="رفض / تصحيح البيانات" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="760" y="430" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ed1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="s" target="a">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="a" target="g">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="g" target="b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="b" target="c">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="c" target="e">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er1" value="لا" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="g" target="r">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er2" value="إعادة المحاولة" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="r" target="a">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="75ae9b8b86b0" name="BPMN-USR-06 تغيير كلمة المرور">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" value="" style="" parent="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="1" value="" style="" parent="0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s" value="بدء" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="70" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a" value="إدخال الحالية أو رمز الاستعادة" style="shape=mxgraph.bpmn.task;taskMarker=user;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="220" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="b" value="التحقق من السياسة والرمز" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="480" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="g" value="صالح؟" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="740" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="d" value="تحديث Hash وإلغاء الرموز القديمة" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontFamily=Arial;arcSize=12;" parent="1" vertex="1">
+          <mxGeometry x="1000" y="240" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="e" value="تم التغيير" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1260" y="240" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="r" value="رفض / تصحيح البيانات" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontFamily=Arial;" parent="1" vertex="1">
+          <mxGeometry x="760" y="430" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ed1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="s" target="a">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="a" target="b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="b" target="g">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="g" target="d">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="d" target="e">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er1" value="لا" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="g" target="r">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="er2" value="إعادة المحاولة" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;fontFamily=Arial;" parent="1" edge="1" source="r" target="a">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,31 @@
+node_modules/
+dist/
+.dart_tool/
+.pub-cache/
+.pub/
+build/
+coverage/
+
+.env
+.env.*
+!.env.example
+
+pgdata/
+pgdata-utf8/
+
+*.log
+.DS_Store
+
+# Local database dumps stay on this computer.
+sayler_data.sql
+sayler_schema.sql
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Packed copies of the project stay on this computer.
+*.zip
+
+# Deploy logs and editor backups can contain server details.
+deploy error/
+*.bkp

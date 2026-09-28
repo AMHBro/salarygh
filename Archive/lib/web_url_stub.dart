@@ -1,0 +1,3 @@
+void configureAppUrl() {}
+
+String startRoute() => '/';

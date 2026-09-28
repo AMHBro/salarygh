@@ -1,0 +1,40 @@
+import 'package:drift/drift.dart';
+
+class SupplierLedgerEntries extends Table {
+  TextColumn get id => text()();
+
+  TextColumn get supplierId => text()();
+
+  /// PURCHASE / PAYMENT / OPENING_BALANCE
+  TextColumn get type => text()();
+
+  RealColumn get amount => real()();
+
+  /// IQD أو USD. المبلغ يبقى بعملة الحركة ولا يُحوَّل.
+  TextColumn get currency => text().withDefault(const Constant('IQD'))();
+
+  TextColumn get referenceType =>
+      text().nullable()();
+
+  TextColumn get referenceId =>
+      text().nullable()();
+
+  TextColumn get note =>
+      text().nullable()();
+
+  TextColumn get userId =>
+      text().nullable()();
+
+  IntColumn get serverVersion =>
+      integer().withDefault(
+        const Constant(0),
+      )();
+
+  DateTimeColumn get createdAt =>
+      dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {
+    id,
+  };
+}

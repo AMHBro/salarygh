@@ -1,11 +1,30 @@
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/auth/auth_user.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/lan/office_role.dart';
 import '../../../core/storage/auth_storage.dart';
 import '../../../core/sync/sync_operation.dart';
 import '../../../core/sync/sync_queue_repository.dart';
 import '../models/warehouse_model.dart';
+
+class WarehouseDeleteRequest {
+  final String id;
+  final String warehouseId;
+  final String warehouseName;
+  final String requestedBy;
+  final String sourceName;
+
+  const WarehouseDeleteRequest({
+    required this.id,
+    required this.warehouseId,
+    required this.warehouseName,
+    required this.requestedBy,
+    required this.sourceName,
+  });
+}
 
 class WarehousesLocalRepository {
   final AppDatabase database;
@@ -380,16 +399,8 @@ class WarehousesLocalRepository {
   //
   // IMPORTANT:
   //
-  // The current backend contract does NOT expose a confirmed general endpoint
-  // for editing warehouse name, code, type, parent, address, capacity, etc.
-  //
-  // Therefore:
-  //
-  // - Local/unsynced warehouse: editing is allowed.
-  // - Synced warehouse: editing is blocked.
-  //
-  // This prevents a local/server divergence and prevents unsupported UPDATE
-  // operations from entering the Outbox.
+  // Name, code, address, capacity, and notes are pushed with
+  // PATCH /warehouses/{serverId} after the warehouse is synced.
   // ===========================================================================
 
   Future<WarehouseModel> updateWarehouse(
@@ -402,13 +413,6 @@ class WarehousesLocalRepository {
     if (current == null) {
       throw StateError(
         'المخزن غير موجود.',
-      );
-    }
-
-    if (current.isSynced) {
-      throw StateError(
-        'لا يمكن تعديل بيانات هذا المخزن حالياً لأنه مرتبط بالسيرفر، '
-            'وواجهة تعديل المخازن غير متوفرة في الـBackend حالياً.',
       );
     }
 
@@ -580,11 +584,8 @@ class WarehousesLocalRepository {
   // ACTIVE / DISABLE
   // ===========================================================================
   //
-  // Confirmed backend endpoint:
-  //
   // POST /warehouses/{id}/disable
-  //
-  // There is currently no confirmed endpoint for reactivation.
+  // POST /warehouses/{id}/enable
   // ===========================================================================
 
   Future<void> setActive({
@@ -616,19 +617,27 @@ class WarehousesLocalRepository {
       );
     }
 
-    // -------------------------------------------------------------------------
-    // Reactivation is not part of the confirmed backend contract.
-    // -------------------------------------------------------------------------
-
-    if (isActive) {
-      throw StateError(
-        'لا يمكن إعادة تفعيل المخزن حالياً لأن '
-            'واجهة إعادة التفعيل غير متوفرة في الـBackend.',
+    if (isActive && current.type == WarehouseType.sub) {
+      final parentId = _clean(
+        current.parentWarehouseId,
       );
+
+      if (parentId != null) {
+        final parent = await getWarehouseById(
+          parentId,
+        );
+
+        if (parent != null && !parent.isActive) {
+          throw StateError(
+            'لا يمكن تفعيل مخزن فرعي تابع لمخزن أب موقوف.',
+          );
+        }
+      }
     }
 
     final updated = current.copyWith(
-      isActive: false,
+      isActive: isActive,
+      status: isActive ? 'ACTIVE' : 'INACTIVE',
       updatedAt: DateTime.now(),
     );
 
@@ -643,8 +652,11 @@ class WarehousesLocalRepository {
           ))
             .write(
           WarehousesCompanion(
-            isActive: const Value(
-              false,
+            isActive: Value(
+              isActive,
+            ),
+            status: Value(
+              updated.status,
             ),
             updatedAt: Value(
               updated.updatedAt,
@@ -661,19 +673,23 @@ class WarehousesLocalRepository {
         // ---------------------------------------------------------------------
         // The warehouse gateway interprets:
         //
-        // UPDATE + server_id != null + is_active == false
-        //
-        // as:
-        //
-        // POST /warehouses/{serverId}/disable
+        // UPDATE + action == enable  -> POST /warehouses/{serverId}/enable
+        // UPDATE + is_active == false -> POST /warehouses/{serverId}/disable
         // ---------------------------------------------------------------------
+
+        final payload = updated.toSyncJson();
+        if (isActive) {
+          payload['action'] = 'enable';
+        }
 
         await syncQueue.enqueue(
           entityType: 'warehouse',
           entityId: current.id,
           operation: SyncOperation.update,
-          idempotencyKey: current.id,
-          payload: updated.toSyncJson(),
+          idempotencyKey: isActive
+              ? '${current.id}:enable'
+              : current.id,
+          payload: payload,
         );
       },
     );
@@ -697,27 +713,294 @@ class WarehousesLocalRepository {
   Future<void> deleteWarehouse(
       WarehouseModel warehouse,
       ) async {
-    final current = await getWarehouseById(
-      warehouse.id,
-    );
+    await requestWarehouseDelete(warehouse);
+  }
 
-    if (current == null) {
-      throw StateError(
-        'المخزن غير موجود.',
-      );
+  Future<void> _ensureDeleteRequests() {
+    return database.customStatement('''
+      CREATE TABLE IF NOT EXISTS warehouse_delete_requests (
+        id TEXT PRIMARY KEY,
+        warehouse_id TEXT NOT NULL,
+        warehouse_name TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        source_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<List<WarehouseDeleteRequest>> listPendingWarehouseDeletes() async {
+    await _ensureDeleteRequests();
+    final rows = await database.customSelect('''
+      SELECT id, warehouse_id, warehouse_name, requested_by, source_name
+      FROM warehouse_delete_requests
+      WHERE status = 'PENDING'
+      ORDER BY created_at
+    ''').get();
+    return [
+      for (final row in rows)
+        WarehouseDeleteRequest(
+          id: row.read<String>('id'),
+          warehouseId: row.read<String>('warehouse_id'),
+          warehouseName: row.read<String>('warehouse_name'),
+          requestedBy: row.read<String>('requested_by'),
+          sourceName: row.read<String>('source_name'),
+        ),
+    ];
+  }
+
+  Future<String> requestWarehouseDelete(
+      WarehouseModel warehouse,
+      ) async {
+    final current = await getWarehouseById(warehouse.id);
+    if (current == null || current.deletedAt != null) {
+      throw StateError('المخزن غير موجود.');
+    }
+    await _assertWarehouseCanBeDeleted(current);
+    await _ensureDeleteRequests();
+    final existing = await database.customSelect(
+      '''
+      SELECT id FROM warehouse_delete_requests
+      WHERE warehouse_id = ? AND status = 'PENDING'
+      LIMIT 1
+      ''',
+      variables: [Variable.withString(current.id)],
+    ).getSingleOrNull();
+    final session = await authStorage.readSession();
+    final requestedBy = session?.user.name.trim().isNotEmpty == true
+        ? session!.user.name.trim()
+        : 'مستخدم';
+    final role = resolveSessionRole(
+      storedRole: session?.user.role,
+      accessToken: session?.accessToken,
+    );
+    final managerOnPrimary =
+        !await OfficeRole.instance.isBranch() && canApproveWarehouseDelete(role);
+
+    if (existing != null) {
+      if (managerOnPrimary) {
+        await approveWarehouseDelete(existing.read<String>('id'));
+        return 'حُذف المخزن من هذه الحاسبة.';
+      }
+      throw StateError('طلب حذف هذا المخزن بانتظار موافقة المدير.');
     }
 
-    if (current.isSynced) {
-      throw StateError(
-        'حذف المخزن غير مدعوم حالياً من السيرفر. '
-            'استخدم إيقاف المخزن بدلاً من الحذف.',
-      );
+    if (await OfficeRole.instance.isBranch()) {
+      await _sendBranchDeleteRequest(current, requestedBy);
+      return 'أُرسل طلب الحذف إلى الحاسبة الأساسية، وبانتظار موافقة المدير.';
     }
 
-    throw StateError(
-      'لا يمكن حذف مخزن محلي بانتظار المزامنة حالياً، '
-          'لأن عملية الإنشاء قد تكون موجودة في قائمة المزامنة.',
+    final requestId = await _insertDeleteRequest(
+      warehouseId: current.id,
+      warehouseName: current.name,
+      requestedBy: requestedBy,
+      sourceName: 'الحاسبة الأساسية',
     );
+    if (managerOnPrimary) {
+      await approveWarehouseDelete(requestId);
+      return 'حُذف المخزن من هذه الحاسبة.';
+    }
+    return 'طلب الحذف بانتظار موافقة المدير على هذه الحاسبة.';
+  }
+
+  Future<void> receiveBranchDeleteRequest({
+    required String warehouseId,
+    required String warehouseName,
+    String? warehouseServerId,
+    required String requestedBy,
+  }) async {
+    WarehouseModel? warehouse = await getWarehouseById(warehouseId);
+    final serverId = warehouseServerId?.trim() ?? '';
+    if ((warehouse == null || warehouse.deletedAt != null) && serverId.isNotEmpty) {
+      final row = await (database.select(database.warehouses)
+            ..where((table) => table.serverId.equals(serverId)))
+          .getSingleOrNull();
+      warehouse = row == null ? null : _mapRowToModel(row);
+    }
+    if ((warehouse == null || warehouse.deletedAt != null) &&
+        warehouseName.trim().isNotEmpty) {
+      final row = await (database.select(database.warehouses)
+            ..where(
+              (table) =>
+                  table.name.equals(warehouseName.trim()) &
+                  table.deletedAt.isNull(),
+            ))
+          .getSingleOrNull();
+      warehouse = row == null ? warehouse : _mapRowToModel(row);
+    }
+    if (warehouse == null || warehouse.deletedAt != null) {
+      throw StateError('المخزن غير موجود على الحاسبة الأساسية.');
+    }
+    await _assertWarehouseCanBeDeleted(warehouse);
+    await _ensureDeleteRequests();
+    final existing = await database.customSelect(
+      '''
+      SELECT id FROM warehouse_delete_requests
+      WHERE warehouse_id = ? AND status = 'PENDING'
+      LIMIT 1
+      ''',
+      variables: [Variable.withString(warehouse.id)],
+    ).getSingleOrNull();
+    if (existing != null) {
+      return;
+    }
+    await _insertDeleteRequest(
+      warehouseId: warehouse.id,
+      warehouseName: warehouse.name,
+      requestedBy: requestedBy.trim().isEmpty ? 'حاسبة فرعية' : requestedBy.trim(),
+      sourceName: 'حاسبة فرعية',
+    );
+  }
+
+  Future<void> approveWarehouseDelete(String requestId) async {
+    await _ensureDeleteRequests();
+    final request = await _pendingRequest(requestId);
+    final warehouse = await getWarehouseById(request.warehouseId);
+    if (warehouse == null || warehouse.deletedAt != null) {
+      throw StateError('المخزن غير موجود.');
+    }
+    await _assertWarehouseCanBeDeleted(warehouse);
+    final now = DateTime.now();
+    await database.transaction(() async {
+      await (database.update(database.warehouses)
+            ..where((table) => table.id.equals(warehouse.id)))
+          .write(
+        WarehousesCompanion(
+          isActive: const Value(false),
+          deletedAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+      await database.customStatement(
+        '''
+        UPDATE warehouse_delete_requests
+        SET status = 'APPROVED'
+        WHERE id = ?
+        ''',
+        [requestId],
+      );
+    });
+  }
+
+  Future<void> rejectWarehouseDelete(String requestId) async {
+    await _ensureDeleteRequests();
+    await _pendingRequest(requestId);
+    await database.customStatement(
+      '''
+      UPDATE warehouse_delete_requests
+      SET status = 'REJECTED'
+      WHERE id = ?
+      ''',
+      [requestId],
+    );
+  }
+
+  Future<WarehouseDeleteRequest> _pendingRequest(String requestId) async {
+    final row = await database.customSelect(
+      '''
+      SELECT id, warehouse_id, warehouse_name, requested_by, source_name, status
+      FROM warehouse_delete_requests
+      WHERE id = ?
+      LIMIT 1
+      ''',
+      variables: [Variable.withString(requestId)],
+    ).getSingleOrNull();
+    if (row == null || row.read<String>('status') != 'PENDING') {
+      throw StateError('طلب الحذف غير موجود.');
+    }
+    return WarehouseDeleteRequest(
+      id: row.read<String>('id'),
+      warehouseId: row.read<String>('warehouse_id'),
+      warehouseName: row.read<String>('warehouse_name'),
+      requestedBy: row.read<String>('requested_by'),
+      sourceName: row.read<String>('source_name'),
+    );
+  }
+
+  Future<void> _assertWarehouseCanBeDeleted(WarehouseModel warehouse) async {
+    final stock = await database.customSelect(
+      '''
+      SELECT COALESCE(SUM(quantity), 0) AS qty
+      FROM stock_balances
+      WHERE warehouse_id = ?
+      ''',
+      variables: [Variable.withString(warehouse.id)],
+    ).getSingle();
+    if ((stock.read<num>('qty')).toDouble() > 0) {
+      throw StateError('انقل البضاعة من المخزن قبل طلب الحذف.');
+    }
+    final children = await (database.select(database.warehouses)
+          ..where(
+            (table) =>
+                table.parentWarehouseId.equals(warehouse.id) &
+                table.deletedAt.isNull(),
+          ))
+        .get();
+    if (children.isNotEmpty) {
+      throw StateError('احذف المخازن الفرعية أولاً.');
+    }
+  }
+
+  Future<String> _insertDeleteRequest({
+    required String warehouseId,
+    required String warehouseName,
+    required String requestedBy,
+    required String sourceName,
+  }) {
+    final id = _uuid.v4();
+    return database.customInsert(
+      '''
+      INSERT INTO warehouse_delete_requests (
+        id, warehouse_id, warehouse_name, requested_by, source_name, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
+      ''',
+      variables: [
+        Variable.withString(id),
+        Variable.withString(warehouseId),
+        Variable.withString(warehouseName),
+        Variable.withString(requestedBy),
+        Variable.withString(sourceName),
+        Variable.withString(DateTime.now().toUtc().toIso8601String()),
+      ],
+    ).then((_) => id);
+  }
+
+  Future<void> _sendBranchDeleteRequest(
+    WarehouseModel warehouse,
+    String requestedBy,
+  ) async {
+    final role = OfficeRole.instance;
+    final base = await role.readBase();
+    final token = await role.readToken();
+    if (token.isEmpty) {
+      throw StateError('رمز الشبكة المحلية مطلوب لإرسال طلب الحذف.');
+    }
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: base,
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 20),
+        headers: {'Authorization': 'Bearer $token'},
+      ),
+    );
+    try {
+      await dio.post(
+        '/v1/queue',
+        data: {
+          'idempotencyKey': 'wh-del-${warehouse.id}-${DateTime.now().microsecondsSinceEpoch}',
+          'kind': 'warehouse.delete.request',
+          'payload': {
+            'warehouseId': warehouse.id,
+            'warehouseName': warehouse.name,
+            'warehouseServerId': warehouse.serverId,
+            'requestedBy': requestedBy,
+          },
+        },
+      );
+    } on DioException {
+      throw StateError('تعذر الوصول إلى الحاسبة الأساسية لإرسال طلب الحذف.');
+    }
   }
 
   // ===========================================================================

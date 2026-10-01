@@ -24,6 +24,8 @@ import {
     chooseInvoicePriceType,
     readAllowedPrices,
 } from '../../representatives/allowed-prices';
+import { assertRepDebtCeiling, resolveCheckoutDebt } from '../../representatives/rep-debt';
+import { FloorService } from '../../floor/floor.service';
 
 @Injectable()
 export class CheckoutService {
@@ -31,6 +33,7 @@ export class CheckoutService {
         private readonly prisma: PrismaService,
         private readonly pricingService: EcommercePricingService,
         private readonly partyService: EcommercePartyService,
+        private readonly floor: FloorService,
     ) { }
 
     /**
@@ -363,6 +366,8 @@ export class CheckoutService {
                         },
                     });
 
+                await this.reserveCheckoutStock(tx, order.id, cart.items);
+
                 /**
                  * 6. تنظيف Cart Items.
                  *
@@ -497,6 +502,7 @@ export class CheckoutService {
                             office_address: true,
 
                             status: true,
+                            max_debt_limit: true,
                         },
                     });
 
@@ -686,6 +692,19 @@ export class CheckoutService {
                         discountAmount,
                     );
 
+                const debt =
+                    resolveCheckoutDebt(
+                        dto.payment_type,
+                        total,
+                        dto.paid_amount,
+                    );
+
+                await assertRepDebtCeiling(
+                    tx,
+                    representative,
+                    debt.addedDebt,
+                );
+
                 /**
                  * 5. إنشاء Order.
                  */
@@ -761,6 +780,9 @@ export class CheckoutService {
                                 discountAmount,
 
                             total,
+
+                            paid_amount:
+                                debt.paid,
 
                             submitted_at:
                                 new Date(),
@@ -861,6 +883,8 @@ export class CheckoutService {
                             items: true,
                         },
                     });
+
+                await this.reserveCheckoutStock(tx, order.id, cart.items);
 
                 /**
                  * 6. تفريغ Cart Items.
@@ -1037,5 +1061,33 @@ export class CheckoutService {
             order_token:
                 order.public_token,
         };
+    }
+
+    private async reserveCheckoutStock(
+        tx: Prisma.TransactionClient,
+        orderId: string,
+        items: Array<{
+            variant_id: string;
+            quantity: Prisma.Decimal | number;
+            unit: { conversion_factor: Prisma.Decimal | number };
+        }>,
+    ) {
+        const totals = new Map<string, Prisma.Decimal>();
+        for (const item of items) {
+            const factor = new Prisma.Decimal(item.unit?.conversion_factor ?? 1);
+            const base = new Prisma.Decimal(item.quantity).mul(factor);
+            totals.set(
+                item.variant_id,
+                (totals.get(item.variant_id) ?? new Prisma.Decimal(0)).add(base),
+            );
+        }
+        await this.floor.reserveOrder(
+            tx,
+            orderId,
+            [...totals.entries()].map(([variantId, baseQuantity]) => ({
+                variantId,
+                baseQuantity,
+            })),
+        );
     }
 }

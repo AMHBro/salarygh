@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/paging/list_page.dart';
 import '../data/alira_catalog.dart';
 import '../data/alira_mock.dart';
 import '../data/alira_store_orders.dart';
@@ -38,26 +37,39 @@ class _AliraShopAppState extends State<AliraShopApp> {
   }
 
   Future<void> _loadShelf() async {
-    await AliraCatalog.load(agent: false);
+    await AliraCatalog.load(
+      agent: false,
+      query: _search.text,
+      familyId: _search.text.trim().isEmpty ? _familyId : null,
+    );
     if (!mounted) return;
     setState(() => _loading = false);
   }
 
-  List<AliraProduct> get _shelf {
-    final family = _familyId;
-    return AliraCatalog.products.where((item) {
-      if (family != null && item.categoryId != family) return false;
-      final query = _search.text.trim();
-      return query.isEmpty || item.name.contains(query);
-    }).toList();
+  void _scheduleShelf() {
+    AliraCatalog.scheduleLoad(
+      agent: false,
+      query: _search.text,
+      familyId: _search.text.trim().isEmpty ? _familyId : null,
+      onDone: () {
+        if (mounted) setState(() => _loading = false);
+      },
+    );
   }
 
-  AliraProduct? _productById(String id) {
-    for (final product in AliraCatalog.products) {
-      if (product.id == id) return product;
-    }
-    return null;
+  Future<void> _loadMore() async {
+    await AliraCatalog.load(agent: false, append: true);
+    if (mounted) setState(() {});
   }
+
+  List<AliraProduct> get _shelf {
+    return AliraCatalog.visible(
+      familyId: _search.text.trim().isEmpty ? _familyId : null,
+      query: _search.text,
+    );
+  }
+
+  AliraProduct? _productById(String id) => AliraCatalog.byId(id);
 
   @override
   void dispose() {
@@ -65,6 +77,7 @@ class _AliraShopAppState extends State<AliraShopApp> {
     _name.dispose();
     _address.dispose();
     _phone.dispose();
+    AliraCatalog.cancelPending();
     super.dispose();
   }
 
@@ -195,6 +208,7 @@ class _AliraShopAppState extends State<AliraShopApp> {
       child: Column(
         children: [
           Expanded(child: _body()),
+          if (_page == _ShopPage.catalog && AliraCatalog.hasNext) _loadMoreBar(),
           if (_page == _ShopPage.catalog) _bar(),
         ],
       ),
@@ -218,88 +232,51 @@ class _AliraShopAppState extends State<AliraShopApp> {
     final products = _shelf;
     return Column(
       children: [
-        Container(
-          color: AliraColors.paper,
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-          child: Column(
-            children: [
-              const Row(
-                children: [
-                  Text('9:41', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                  Spacer(),
-                  Text('LTE · 57%', style: TextStyle(fontSize: 12, color: AliraColors.muted)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AliraColors.orange,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text('أ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('المتجر', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                        Text(
-                          'عنوان السيرفر من إعدادات الحاسبة',
-                          style: TextStyle(fontSize: 11, color: AliraColors.muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text('$_count', style: const TextStyle(fontWeight: FontWeight.w700)),
-                ],
-              ),
-              const Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  'للزبائن · اختر الكمية ثم أرسل الطلب',
-                  style: TextStyle(fontSize: 11, color: AliraColors.muted),
-                ),
-              ),
-            ],
-          ),
-        ),
+        const AliraStatusBar(title: 'المتجر', hint: 'سعر المفرد'),
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
           child: TextField(
             controller: _search,
-            onChanged: (_) => setState(() {}),
+            onChanged: (value) {
+              setState(() {
+                if (value.trim().isNotEmpty) _familyId = null;
+              });
+              _scheduleShelf();
+            },
             decoration: const InputDecoration(
-              hintText: 'بحث بالاسم',
+              hintText: 'ابحث بالاسم',
               isDense: true,
               filled: true,
               fillColor: AliraColors.paper,
+              prefixIcon: Icon(Icons.search, size: 20, color: AliraColors.teal),
             ),
           ),
         ),
         SizedBox(
-          height: 42,
+          height: 52,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
             children: [
+              AliraFilterChip(
+                label: 'الكل',
+                selected: _familyId == null,
+                onTap: () {
+                  setState(() => _familyId = null);
+                  _loadShelf();
+                },
+              ),
               for (final family in AliraCatalog.families)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: ChoiceChip(
-                    label: Text(family.name),
-                    selected: _familyId == family.id,
-                    side: BorderSide(
-                      color: _familyId == family.id ? AliraColors.text : AliraColors.line,
-                      width: _familyId == family.id ? 1.8 : 1.4,
-                    ),
-                    onSelected: (_) => setState(() => _familyId = family.id),
-                  ),
+                AliraFilterChip(
+                  label: family.name,
+                  selected: _familyId == family.id,
+                  onTap: () {
+                    setState(() {
+                      _familyId = _familyId == family.id ? null : family.id;
+                      if (_familyId != null) _search.clear();
+                    });
+                    _loadShelf();
+                  },
                 ),
             ],
           ),
@@ -307,85 +284,80 @@ class _AliraShopAppState extends State<AliraShopApp> {
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
-              : _familyId == null
-                  ? const Center(child: Text('اختر عائلة المواد'))
-                  : products.isEmpty
-                      ? const Center(child: Text('لا توجد مواد في المخزن لهذه العائلة'))
-                      : Column(
-                          children: [
-                            Expanded(
-                              child: GridView.builder(
-                                padding: const EdgeInsets.all(12),
-                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  mainAxisSpacing: 8,
-                                  crossAxisSpacing: 8,
-                                  childAspectRatio: 0.72,
-                                ),
-                                itemCount: products.length,
-                                itemBuilder: (context, index) => _productCard(products[index]),
-                              ),
-                            ),
-                            ListPagination(
-                              page: AliraCatalog.page,
-                              hasNextPage: AliraCatalog.hasNext,
-                              pageSize: 20,
-                              loading: AliraCatalog.loading,
-                              onPageChanged: (page) async {
-                                await AliraCatalog.openPage(page, agent: false);
-                                if (mounted) setState(() {});
-                              },
-                            ),
-                          ],
-                        ),
+              : products.isEmpty
+                  ? Center(
+                      child: Text(
+                        _search.text.trim().isEmpty
+                            ? 'لا توجد مواد في هذه العائلة'
+                            : 'لا توجد مادة بهذا الاسم',
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        childAspectRatio: 0.58,
+                      ),
+                      itemCount: products.length,
+                      itemBuilder: (context, index) => _productCard(products[index]),
+                    ),
         ),
       ],
     );
   }
 
+  void _setQty(String id, int next) {
+    setState(() {
+      if (next <= 0) {
+        _cart.remove(id);
+      } else {
+        _cart[id] = next;
+      }
+    });
+  }
+
   Widget _productCard(AliraProduct product) {
     final qty = _cart[product.id] ?? 0;
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: AliraColors.paper,
-        borderRadius: BorderRadius.circular(14),
-        border: const Border.fromBorderSide(AliraColors.frame),
-      ),
+    return AliraSoftCard(
+      padding: const EdgeInsets.all(10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(child: _thumb(product)),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-          Text('IQD ${aliraMoney(product.price)} · ${product.unit}', style: const TextStyle(fontSize: 11, color: AliraColors.muted)),
-          Row(
-            children: [
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                padding: EdgeInsets.zero,
-                onPressed: qty == 0
-                    ? null
-                    : () => setState(() {
-                          if (qty <= 1) {
-                            _cart.remove(product.id);
-                          } else {
-                            _cart[product.id] = qty - 1;
-                          }
-                        }),
-                icon: const Icon(Icons.remove, size: 18),
-              ),
-              Text('$qty'),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                padding: EdgeInsets.zero,
-                onPressed: () => setState(() => _cart[product.id] = qty + 1),
-                icon: const Icon(Icons.add, size: 18),
-              ),
-            ],
+          Text(
+            product.categoryName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, color: AliraColors.muted),
           ),
+          const SizedBox(height: 4),
+          Text(
+            '${aliraMoney(product.price)} د.ع',
+            style: const TextStyle(fontWeight: FontWeight.w800, color: AliraColors.teal),
+          ),
+          const SizedBox(height: 8),
+          if (qty == 0)
+            SizedBox(
+              height: 36,
+              child: FilledButton(
+                onPressed: () => _setQty(product.id, 1),
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(36), padding: EdgeInsets.zero),
+                child: const Text('إضافة'),
+              ),
+            )
+          else
+            Align(
+              alignment: Alignment.center,
+              child: AliraQtyCapsule(
+                quantity: qty,
+                onMinus: () => _setQty(product.id, qty - 1),
+                onPlus: () => _setQty(product.id, qty + 1),
+              ),
+            ),
         ],
       ),
     );
@@ -408,15 +380,38 @@ class _AliraShopAppState extends State<AliraShopApp> {
     );
   }
 
+  Widget _loadMoreBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+      child: OutlinedButton(
+        onPressed: AliraCatalog.loading ? null : _loadMore,
+        child: Text(AliraCatalog.loading ? 'جارٍ التحميل...' : 'تحميل المزيد'),
+      ),
+    );
+  }
+
   Widget _bar() {
-    return Material(
-      color: AliraColors.paper,
-      child: InkWell(
-        onTap: () => setState(() => _page = _ShopPage.cart),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Text('السلة · IQD ${aliraMoney(_total)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-        ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+      decoration: const BoxDecoration(
+        color: AliraColors.paper,
+        boxShadow: [BoxShadow(color: Color(0x140F4C45), blurRadius: 16, offset: Offset(0, -4))],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text('$_count مواد', style: const TextStyle(fontWeight: FontWeight.w700)),
+              const Spacer(),
+              Text('${aliraMoney(_total)} د.ع', style: const TextStyle(fontWeight: FontWeight.w800, color: AliraColors.teal)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: _count == 0 ? null : () => setState(() => _page = _ShopPage.cart),
+            child: const Text('مراجعة وإرسال الطلب'),
+          ),
+        ],
       ),
     );
   }
@@ -436,15 +431,40 @@ class _AliraShopAppState extends State<AliraShopApp> {
                       Builder(builder: (context) {
                         final product = _productById(entry.key);
                         if (product == null) return const SizedBox.shrink();
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(product.name),
-                          subtitle: Text('${entry.value} × IQD ${aliraMoney(product.price)}'),
-                          trailing: Text('IQD ${aliraMoney(product.price * entry.value)}'),
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: AliraSoftCard(
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(product.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                      const SizedBox(height: 4),
+                                      Text('${aliraMoney(product.price)} د.ع', style: const TextStyle(color: AliraColors.muted, fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                AliraQtyCapsule(
+                                  quantity: entry.value,
+                                  onMinus: () => _setQty(product.id, entry.value - 1),
+                                  onPlus: () => _setQty(product.id, entry.value + 1),
+                                ),
+                              ],
+                            ),
+                          ),
                         );
                       }),
-                    Text('عدد القطع $_count'),
-                    Text('المجموع IQD ${aliraMoney(_total)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    AliraSoftCard(
+                      child: Row(
+                        children: [
+                          Text('$_count مواد'),
+                          const Spacer(),
+                          Text('${aliraMoney(_total)} د.ع', style: const TextStyle(fontWeight: FontWeight.w800, color: AliraColors.teal)),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
         ),
@@ -452,7 +472,7 @@ class _AliraShopAppState extends State<AliraShopApp> {
           padding: const EdgeInsets.all(12),
           child: FilledButton(
             onPressed: _count == 0 ? null : () => setState(() => _page = _ShopPage.form),
-            child: const Text('إرسال'),
+            child: const Text('متابعة البيانات'),
           ),
         ),
       ],
@@ -467,25 +487,15 @@ class _AliraShopAppState extends State<AliraShopApp> {
           child: ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              TextField(
-                controller: _name,
-                decoration: const InputDecoration(labelText: 'اسم الزبون', filled: true, fillColor: AliraColors.paper),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _address,
-                decoration: const InputDecoration(labelText: 'العنوان', filled: true, fillColor: AliraColors.paper),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _phone,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'الهاتف', filled: true, fillColor: AliraColors.paper),
-              ),
+              _fieldCard(_name, 'الاسم'),
+              const SizedBox(height: 10),
+              _fieldCard(_phone, 'الهاتف', type: TextInputType.phone),
+              const SizedBox(height: 10),
+              _fieldCard(_address, 'العنوان'),
               if (_error != null)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(_error!, style: const TextStyle(color: AliraColors.red)),
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(_error!, style: const TextStyle(color: AliraColors.red, fontWeight: FontWeight.w700)),
                 ),
             ],
           ),
@@ -524,6 +534,22 @@ class _AliraShopAppState extends State<AliraShopApp> {
           child: FilledButton(onPressed: _newOrder, child: const Text('طلب جديد')),
         ),
       ],
+    );
+  }
+
+  Widget _fieldCard(TextEditingController controller, String label, {TextInputType? type}) {
+    return AliraSoftCard(
+      child: TextField(
+        controller: controller,
+        keyboardType: type,
+        decoration: InputDecoration(
+          labelText: label,
+          filled: false,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+        ),
+      ),
     );
   }
 

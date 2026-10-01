@@ -8,6 +8,7 @@ import {
   ValidateNested,
   IsOptional,
   IsString,
+  IsBoolean,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -109,6 +110,16 @@ export class CreateDirectSaleDto {
   @IsArray()
   @IsString({ each: true })
   hold_keys?: string[];
+
+  @ApiPropertyOptional({ description: 'يفعّل إعادة فحص سقف المندوب عند رفع طابور الأوفلاين' })
+  @IsOptional()
+  @IsBoolean()
+  sync_revalidate?: boolean;
+
+  @ApiPropertyOptional({ example: 'IQD', description: 'عملة الفاتورة. USD لا يُقاس على سقف الدينار' })
+  @IsOptional()
+  @IsString()
+  currency?: string;
 
   @ApiProperty({ type: [SaleItemDto], description: 'قائمة المواد المباعة' })
   @IsArray()

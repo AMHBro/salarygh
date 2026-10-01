@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 
 import { FloorService } from '../floor/floor.service';
+import { assertRepDebtCeiling } from '../representatives/rep-debt';
 
 import {
     movement_type_enum,
@@ -87,6 +88,14 @@ export interface SalesTransactionPayload {
      * المستخدم الذي نفذ العملية.
      */
     created_by?: string | null;
+
+    /**
+     * مسار رفع طابور الأوفلاين. يعيد فحص سقف المندوب بالمبلغ الآجل المحسوب هنا.
+     */
+    sync_revalidate?: boolean;
+
+    /** USD لا يُقاس على سقف الدينار. */
+    currency?: string | null;
 }
 
 @Injectable()
@@ -273,6 +282,7 @@ export class SalesTransactionService {
                 balance: Prisma.Decimal;
                 credit_limit: Prisma.Decimal;
                 is_active: boolean;
+                assigned_rep_id: string | null;
             }
             | null =
             null;
@@ -301,6 +311,9 @@ export class SalesTransactionService {
                             true,
 
                         is_active:
+                            true,
+
+                        assigned_rep_id:
                             true,
                     },
                 });
@@ -900,6 +913,25 @@ export class SalesTransactionService {
                             newBalance.toString(),
                     },
                 });
+            }
+
+            const currency = (payload.currency ?? 'IQD').trim().toUpperCase();
+            if (
+                payload.sync_revalidate &&
+                currency !== 'USD' &&
+                customer.assigned_rep_id
+            ) {
+                const representative = await tx.representatives.findUnique({
+                    where: { id: customer.assigned_rep_id },
+                    select: { id: true, name: true, max_debt_limit: true },
+                });
+                if (representative) {
+                    await assertRepDebtCeiling(
+                        tx,
+                        representative,
+                        dueAmount,
+                    );
+                }
             }
         }
 

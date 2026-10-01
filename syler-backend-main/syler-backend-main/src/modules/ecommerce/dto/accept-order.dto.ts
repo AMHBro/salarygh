@@ -29,8 +29,7 @@ export class AcceptOrderDto {
      *
      * payment_type = PARTIAL
      *
-     * لأن Checkout الحالي يخزن نوع الدفع
-     * لكنه لا يخزن المبلغ المدفوع الجزئي.
+     * إذا غاب هنا يُستخدم paid_amount المحفوظ مع الطلب.
      */
     @ApiPropertyOptional({
         description:

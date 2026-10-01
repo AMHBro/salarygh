@@ -194,6 +194,7 @@ class RepresentativesLocalRepository {
           commissionPercentage:
           row.commissionPercentage,
           allowedPrices: row.allowedPrices,
+          maxDebtLimit: row.maxDebtLimit,
           invoicesCount:
           representativeSales.length,
           soldPieces: soldPieces,
@@ -252,6 +253,7 @@ class RepresentativesLocalRepository {
     String? locationLink,
     required double commissionPercentage,
     String allowedPrices = 'wholesale,representative,retail',
+    double maxDebtLimit = 0,
   }) async {
     final cleanName =
     name.trim();
@@ -296,6 +298,12 @@ class RepresentativesLocalRepository {
       );
     }
 
+    if (maxDebtLimit < 0) {
+      throw StateError(
+        'سقف الذمة لا يكون سالباً.',
+      );
+    }
+
     final existing =
     await (database.select(
       database.representatives,
@@ -334,6 +342,7 @@ class RepresentativesLocalRepository {
       commissionPercentage:
       commissionPercentage,
       allowedPrices: allowedPrices,
+      maxDebtLimit: maxDebtLimit,
       isActive: true,
       serverVersion: 0,
       createdAt: now,
@@ -377,6 +386,9 @@ class RepresentativesLocalRepository {
             ),
             allowedPrices: Value(
               representative.allowedPrices,
+            ),
+            maxDebtLimit: Value(
+              representative.maxDebtLimit,
             ),
             isActive:
             const Value(true),
@@ -422,6 +434,8 @@ class RepresentativesLocalRepository {
                 .officeAddress,
             'location_url':
             representative.locationLink,
+            'max_debt_limit':
+            representative.maxDebtLimit,
           },
         );
       },
@@ -446,6 +460,7 @@ class RepresentativesLocalRepository {
         String? locationLink,
         required double commissionPercentage,
         String allowedPrices = 'wholesale,representative,retail',
+        double maxDebtLimit = 0,
       }) async {
     final cleanName =
     name.trim();
@@ -468,6 +483,12 @@ class RepresentativesLocalRepository {
     if (commissionPercentage < 0) {
       throw StateError(
         'العمولة بالدينار لا تكون سالبة.',
+      );
+    }
+
+    if (maxDebtLimit < 0) {
+      throw StateError(
+        'سقف الذمة لا يكون سالباً.',
       );
     }
 
@@ -513,6 +534,7 @@ class RepresentativesLocalRepository {
       commissionPercentage:
       commissionPercentage,
       allowedPrices: allowedPrices,
+      maxDebtLimit: maxDebtLimit,
       updatedAt: now,
     );
 
@@ -557,6 +579,9 @@ class RepresentativesLocalRepository {
             ),
             allowedPrices: Value(
               updated.allowedPrices,
+            ),
+            maxDebtLimit: Value(
+              updated.maxDebtLimit,
             ),
             updatedAt:
             Value(now),

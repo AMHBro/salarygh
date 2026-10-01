@@ -46,6 +46,12 @@ class Representatives extends Table {
         const Constant('wholesale,representative,retail'),
       )();
 
+  /// 0 يعني لا يوجد سقف. أي قيمة أكبر تُقارن بمجموع ديون زبائن المندوب.
+  RealColumn get maxDebtLimit =>
+      real().withDefault(
+        const Constant(0),
+      )();
+
   BoolColumn get isActive =>
       boolean().withDefault(
         const Constant(true),

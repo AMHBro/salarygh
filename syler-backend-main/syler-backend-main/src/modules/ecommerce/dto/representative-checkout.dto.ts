@@ -1,10 +1,14 @@
 import {
     IsEnum,
+    IsNumber,
     IsOptional,
     IsString,
     IsUUID,
     MaxLength,
+    Min,
 } from 'class-validator';
+
+import { Type } from 'class-transformer';
 
 import {
     ApiProperty,
@@ -68,6 +72,16 @@ export class RepresentativeCheckoutDto {
     })
     @IsEnum(sales_payment_enum)
     payment_type: sales_payment_enum;
+
+    @ApiPropertyOptional({
+        example: 5000,
+        description: 'المبلغ النقدي. الجزئي مطلوب، والآجل صفر، والنقد يساوي الإجمالي',
+    })
+    @IsOptional()
+    @Type(() => Number)
+    @IsNumber()
+    @Min(0)
+    paid_amount?: number;
 
     @ApiPropertyOptional({
         enum: price_type_enum,

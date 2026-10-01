@@ -11,11 +11,13 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../../../prisma/prisma.service';
+import { FloorService } from '../../floor/floor.service';
 
 @Injectable()
 export class EcommerceOrderService {
     constructor(
         private readonly prisma: PrismaService,
+        private readonly floor: FloorService,
     ) { }
 
     /**
@@ -262,6 +264,8 @@ export class EcommerceOrderService {
                         },
                     });
 
+                await this.floor.releaseOrder(tx, order.id);
+
                 return {
                     data:
                         this.mapOrder(
@@ -415,6 +419,8 @@ export class EcommerceOrderService {
                             items: true,
                         },
                     });
+
+                await this.floor.releaseOrder(tx, order.id);
 
                 return {
                     data:

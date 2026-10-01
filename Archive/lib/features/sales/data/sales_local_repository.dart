@@ -4,6 +4,9 @@ import 'package:uuid/uuid.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/paging/list_page.dart';
 import '../../../core/money/party_balance.dart';
+import '../../../core/floor/floor_guard.dart';
+import '../../../core/lan/lan_sale_bridge.dart';
+import '../../../core/lan/office_role.dart';
 import '../../../core/sync/sync_operation.dart';
 import '../../../core/sync/sync_queue_repository.dart';
 import '../../inventory/models/stock_movement_model.dart';
@@ -22,6 +25,38 @@ class SalesLocalRepository {
     required this.database,
     required this.syncQueue,
   });
+
+  Future<void> _assertCustomerCreditLimit({
+    required String customerId,
+    required double dueAmount,
+  }) async {
+    final customer = await (database.select(database.customers)
+          ..where((table) => table.id.equals(customerId)))
+        .getSingleOrNull();
+    if (customer == null || customer.deletedAt != null) {
+      throw StateError('الزبون غير موجود.');
+    }
+    if (customer.creditLimit <= 0) return;
+
+    final rows = await database.customSelect(
+      '''
+SELECT COALESCE(SUM(CASE
+  WHEN type IN ('SALE', 'OPENING_BALANCE', 'PAYMENT')
+    AND IFNULL(currency, 'IQD') != 'USD' THEN ABS(amount)
+  WHEN type IN ('RECEIPT', 'REVERSAL')
+    AND IFNULL(currency, 'IQD') != 'USD' THEN -ABS(amount)
+  ELSE 0 END), 0) AS balance_iqd
+FROM customer_ledger_entries
+WHERE customer_id = ?
+''',
+      variables: [Variable.withString(customerId)],
+    ).get();
+    final raw = rows.isEmpty ? 0 : rows.first.data['balance_iqd'];
+    final balance = raw is num ? raw.toDouble() : double.tryParse('$raw') ?? 0;
+    if (balance + dueAmount > customer.creditLimit + 0.001) {
+      throw StateError('تم تجاوز الحد الائتماني للزبون');
+    }
+  }
 
   // ===========================================================================
   // CREATE SALE
@@ -133,6 +168,61 @@ class SalesLocalRepository {
         throw StateError(
           'في البيع الجزئي يجب أن يكون المبلغ المدفوع أكبر من صفر وأقل من الإجمالي.',
         );
+      }
+    }
+
+    if (await OfficeRole.instance.isBranch()) {
+      return LanSaleBridge.submit(
+        warehouseId: warehouseId,
+        warehouseName: warehouseName,
+        customerId: cleanCustomerId,
+        customerName: customerName,
+        representativeId: cleanRepresentativeId,
+        items: items,
+        subtotal: subtotal,
+        discount: discount,
+        porterage: porterage,
+        total: total,
+        paidAmount: paidAmount,
+        remainingAmount: remainingAmount,
+        paymentType: paymentType,
+        currency: currency,
+        exchangeRate: exchangeRate,
+        totalUsd: totalUsd,
+        notes: notes,
+      );
+    }
+
+    if (cleanCustomerId != null &&
+        remainingAmount > 0 &&
+        currency.toUpperCase() != 'USD') {
+      await _assertCustomerCreditLimit(
+        customerId: cleanCustomerId,
+        dueAmount: remainingAmount,
+      );
+    }
+
+    for (final item in items) {
+      final variantId = item.variantId;
+      if (variantId == null || item.billedPieces <= 0) {
+        continue;
+      }
+      final balance = await _findStockBalance(
+        variantId: variantId,
+        warehouseId: warehouseId,
+      );
+      final currentStock = balance?.quantity ?? 0;
+      if (item.billedPieces + 0.001 < currentStock) {
+        continue;
+      }
+      final message = await FloorGuard.reserve(
+        localVariantId: variantId,
+        localWarehouseId: warehouseId,
+        pieces: item.billedPieces,
+        requireCloud: true,
+      );
+      if (message != null) {
+        throw StateError(message);
       }
     }
 

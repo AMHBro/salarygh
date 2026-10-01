@@ -5,11 +5,15 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { rep_status_enum, sales_status_enum } from '@prisma/client';
+import { Prisma, rep_status_enum, sales_status_enum } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 import { PrismaService } from 'src/prisma/prisma.service';
 import { readAllowedPrices } from '../../representatives/allowed-prices';
+import {
+    calculateRepTotalDebt,
+    repDebtCeilingMessage,
+} from '../../representatives/rep-debt';
 
 @Injectable()
 export class AgentPortalService {
@@ -84,6 +88,12 @@ export class AgentPortalService {
         const totalCommission = rate * invoices.length;
         const paidCommission = Number(representative.paid_commission) || 0;
         const remainingCommission = Math.max(0, totalCommission - paidCommission);
+        const maxDebtLimit = new Prisma.Decimal(representative.max_debt_limit ?? 0);
+        const customerDebtTotal = await calculateRepTotalDebt(
+            this.prisma,
+            representative.id,
+        );
+        const debtCeilingExceeded = maxDebtLimit.gt(0) && customerDebtTotal.gt(maxDebtLimit);
 
         return {
             company: {
@@ -99,6 +109,16 @@ export class AgentPortalService {
                 ),
             },
             debt: Math.round(debt),
+            customer_debt_total: Number(customerDebtTotal),
+            max_debt_limit: Number(maxDebtLimit),
+            debt_ceiling_exceeded: debtCeilingExceeded,
+            debt_ceiling_message: debtCeilingExceeded
+                ? repDebtCeilingMessage(
+                    representative.name,
+                    customerDebtTotal,
+                    maxDebtLimit,
+                )
+                : null,
             profit: {
                 rate,
                 total: Math.round(totalCommission),

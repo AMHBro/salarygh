@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import 'product_stock_panel.dart';
 import '../models/product_model.dart';
 import '../models/product_variant_model.dart';
 
@@ -40,6 +41,10 @@ class ProductDetailsScreen extends StatelessWidget {
                 height: 26,
               ),
               _buildProductHero(),
+              const SizedBox(
+                height: 18,
+              ),
+              ProductStockPanel(productId: product.id),
               const SizedBox(
                 height: 18,
               ),

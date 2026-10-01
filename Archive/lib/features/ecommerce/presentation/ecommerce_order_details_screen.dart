@@ -1,9 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/di/app_services.dart';
 import '../../../core/storage/auth_storage.dart';
 import '../../../core/printing/print_preview.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../representatives/data/rep_debt_ceiling.dart';
 import '../../warehouses/models/warehouse_model.dart';
 import '../models/ecommerce_order_model.dart';
 
@@ -40,11 +42,9 @@ PrintDocument storeOrderDocument(EcommerceOrderModel order) {
           money(item.lineTotal),
         ],
     ],
-    totals: [
-      'المجموع: ${money(order.subtotal)}',
-      'الخصم: ${money(order.discountAmount)}',
-      'الكلي: ${money(order.total)}',
-    ],
+    grandTotal: order.total,
+    discount: order.discountAmount,
+    totals: const [],
   );
 }
 
@@ -70,6 +70,8 @@ class _EcommerceOrderDetailsScreenState
 
   String? _error;
 
+  String? _debtWarning;
+
   @override
   void initState() {
     super.initState();
@@ -77,6 +79,20 @@ class _EcommerceOrderDetailsScreenState
     _order = widget.initialOrder;
 
     _refresh();
+    _loadDebtWarning();
+  }
+
+  Future<void> _loadDebtWarning() async {
+    final name = _order.representative?.name.trim() ?? '';
+    if (!_order.isRepresentative || name.isEmpty) return;
+    final messages = await RepDebtCeiling.messagesForNames(
+      AppServices.database,
+      {name},
+    );
+    if (!mounted) return;
+    setState(() {
+      _debtWarning = messages.isEmpty ? null : messages.first;
+    });
   }
 
   // ===========================================================================
@@ -136,6 +152,9 @@ class _EcommerceOrderDetailsScreenState
     }
 
     List<WarehouseModel> warehouses;
+    String? inactiveName;
+    String? inactiveStatus;
+    final cloudIdByLocalId = <String, String>{};
 
     try {
       final allWarehouses =
@@ -143,16 +162,44 @@ class _EcommerceOrderDetailsScreenState
 
       final stationWarehouseId =
           (await AuthStorage().readStationWarehouseId())?.trim() ?? '';
-      warehouses = allWarehouses
-          .where(
-            (warehouse) =>
-        warehouse.canUseForRemoteInventory &&
-            warehouse.isActive &&
-            warehouse.serverId != null &&
-            warehouse.serverId!.trim().isNotEmpty &&
-            (stationWarehouseId.isEmpty || warehouse.id == stationWarehouseId),
-      )
-          .toList()
+      final cloudWarehouses = await _cloudWarehouses();
+      final cloudById = {
+        for (final warehouse in cloudWarehouses) warehouse.id: warehouse,
+      };
+      final cloudByName = <String, _CloudWarehouse>{};
+      for (final warehouse in cloudWarehouses) {
+        cloudByName.putIfAbsent(warehouse.name.trim(), () => warehouse);
+      }
+      _CloudWarehouse? cloudFor(WarehouseModel warehouse) {
+        final stored = warehouse.serverId?.trim();
+        if (stored != null && stored.isNotEmpty) {
+          final byId = cloudById[stored];
+          if (byId != null) {
+            return byId;
+          }
+        }
+        return cloudByName[warehouse.name.trim()];
+      }
+
+      warehouses = allWarehouses.where((warehouse) {
+        if (!warehouse.isActive || warehouse.deletedAt != null) {
+          return false;
+        }
+        if (stationWarehouseId.isNotEmpty && warehouse.id != stationWarehouseId) {
+          return false;
+        }
+        final cloud = cloudFor(warehouse);
+        if (cloud == null) {
+          return false;
+        }
+        if (!cloud.isActive) {
+          inactiveName = warehouse.name;
+          inactiveStatus = cloud.status;
+          return false;
+        }
+        cloudIdByLocalId[warehouse.id] = cloud.id;
+        return true;
+      }).toList()
         ..sort((a, b) {
           if (a.isMain != b.isMain) {
             return a.isMain ? -1 : 1;
@@ -176,8 +223,17 @@ class _EcommerceOrderDetailsScreenState
     }
 
     if (warehouses.isEmpty) {
+      final status = inactiveStatus?.trim().toUpperCase() ?? '';
+      final message = inactiveName == null
+          ? 'المخزن موجود على هذه الحاسبة، ورقمه غير مسجّل على السيرفر. الموافقة تستخدم فقط مخزن المتجر النشط.'
+          : (status == 'PENDING_APPROVAL' ||
+                  status == 'DRAFT' ||
+                  status == 'REJECTED' ||
+                  status == 'LOCAL')
+              ? 'المخزن «$inactiveName» غير مفعّل على السيرفر. من شاشة المخازن افتح النقاط بجانبه واضغط اعتماد وتفعيل، ثم أعد الموافقة.'
+              : 'المخزن «$inactiveName» موجود على السيرفر لكنه غير مفعّل. فعّله من شاشة المخازن ثم أعد الموافقة.';
       _showMessage(
-        'لا يوجد مخزن فعّال ومتزامن مع السيرفر يمكن استخدامه لقبول الطلب.',
+        message,
       );
 
       return;
@@ -219,7 +275,7 @@ class _EcommerceOrderDetailsScreenState
                       const SizedBox(height: 18),
                       DropdownButtonFormField<String>(
                         initialValue:
-                        selectedWarehouse.serverId,
+                        selectedWarehouse.id,
                         decoration: const InputDecoration(
                           labelText: 'المخزن',
                           border: OutlineInputBorder(),
@@ -228,7 +284,7 @@ class _EcommerceOrderDetailsScreenState
                             .map(
                               (warehouse) =>
                               DropdownMenuItem<String>(
-                                value: warehouse.serverId,
+                                value: warehouse.id,
                                 child: Text(
                                   warehouse.name,
                                 ),
@@ -242,7 +298,7 @@ class _EcommerceOrderDetailsScreenState
 
                           final match = warehouses.firstWhere(
                                 (warehouse) =>
-                            warehouse.serverId == value,
+                            warehouse.id == value,
                           );
 
                           setDialogState(() {
@@ -292,7 +348,7 @@ class _EcommerceOrderDetailsScreenState
                     ),
                   ),
                   ElevatedButton(
-                    onPressed: () {
+                    onPressed: () async {
                       double? paidAmount;
 
                       if (_order.isPartialPayment) {
@@ -318,11 +374,28 @@ class _EcommerceOrderDetailsScreenState
                         }
                       }
 
+                      final cloudId = cloudIdByLocalId[selectedWarehouse.id];
+                      if (cloudId == null || cloudId.isEmpty) {
+                        return;
+                      }
+                      final stored = selectedWarehouse.serverId?.trim();
+                      if (stored != cloudId) {
+                        try {
+                          await AppServices.warehousesRepository.saveServerSnapshot(
+                            localId: selectedWarehouse.id,
+                            serverId: cloudId,
+                            status: 'ACTIVE',
+                            type: selectedWarehouse.type,
+                          );
+                        } catch (_) {}
+                      }
+                      if (!dialogContext.mounted) {
+                        return;
+                      }
                       Navigator.pop(
                         dialogContext,
                         _AcceptDialogResult(
-                          warehouseServerId:
-                          selectedWarehouse.serverId!,
+                          warehouseServerId: cloudId,
                           paidAmount: paidAmount,
                         ),
                       );
@@ -555,6 +628,11 @@ class _EcommerceOrderDetailsScreenState
             if (_loading)
               const LinearProgressIndicator(
                 minHeight: 2,
+              ),
+            if (_debtWarning != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 12, 28, 0),
+                child: RepDebtBanner(message: _debtWarning!),
               ),
             Expanded(
               child: _buildBody(),
@@ -1042,9 +1120,60 @@ class _EcommerceOrderDetailsScreenState
       );
   }
 
+  Future<List<_CloudWarehouse>> _cloudWarehouses() async {
+    final response = await AppServices.apiClient.get(
+      '/warehouses',
+      queryParameters: {
+        'page': 1,
+        'limit': 100,
+      },
+      requiresBranch: false,
+    );
+    final body = response.data;
+    final raw = body is Map ? body['data'] : null;
+    if (raw is! List) {
+      return const [];
+    }
+    return [
+      for (final item in raw.whereType<Map>())
+        _CloudWarehouse(
+          id: '${item['id'] ?? ''}'.trim(),
+          name: '${item['name'] ?? ''}'.trim(),
+          status: '${item['status'] ?? ''}'.trim(),
+        ),
+    ].where((warehouse) => warehouse.id.isNotEmpty && warehouse.name.isNotEmpty).toList();
+  }
+
   String _errorText(
       Object error,
       ) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map) {
+        final message = data['message'];
+        if (message is String && message.trim().isNotEmpty) {
+          return message.trim();
+        }
+        if (message is Map && message['message'] is String) {
+          final nested = '${message['message']}'.trim();
+          if (nested.isNotEmpty) {
+            return nested;
+          }
+        }
+        if (message is List && message.isNotEmpty) {
+          return message.map((item) => '$item').join('\n');
+        }
+      }
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.connectionError:
+          return 'تعذر الاتصال بالسيرفر. تحقق من الإنترنت ثم أعد الموافقة.';
+        default:
+          break;
+      }
+    }
     return error
         .toString()
         .replaceFirst(
@@ -1054,6 +1183,10 @@ class _EcommerceOrderDetailsScreenState
         .replaceFirst(
       'Exception: ',
       '',
+    )
+        .replaceFirst(
+      'DioException [bad response]: ',
+      '',
     );
   }
 }
@@ -1061,6 +1194,20 @@ class _EcommerceOrderDetailsScreenState
 // =============================================================================
 // ACCEPT RESULT
 // =============================================================================
+
+class _CloudWarehouse {
+  final String id;
+  final String name;
+  final String status;
+
+  const _CloudWarehouse({
+    required this.id,
+    required this.name,
+    required this.status,
+  });
+
+  bool get isActive => status.toUpperCase() == 'ACTIVE';
+}
 
 class _AcceptDialogResult {
   final String warehouseServerId;

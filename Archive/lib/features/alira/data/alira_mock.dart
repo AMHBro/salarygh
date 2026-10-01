@@ -14,6 +14,7 @@ class AliraProduct {
   final String? variantId;
   final String? unitId;
   final Map<String, int> prices;
+  final int stock;
 
   const AliraProduct({
     required this.id,
@@ -31,6 +32,7 @@ class AliraProduct {
     this.variantId,
     this.unitId,
     this.prices = const {},
+    this.stock = 0,
   });
 
   int get agentPrice => prices['representative'] ?? repPrice ?? price;

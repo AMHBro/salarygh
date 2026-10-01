@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
-import '../../products/presentation/image_pick.dart';
 import '../models/document_layout.dart';
 
 class DocumentLayoutSection extends StatelessWidget {
@@ -106,7 +105,7 @@ class _HeaderEditorState extends State<_HeaderEditor> {
   late final TextEditingController _phoneLabel;
   late final TextEditingController _phone2Label;
   late final List<TextEditingController> _extraLines;
-  late String _logoUrl;
+  late final TextEditingController _logoUrl;
   late String _position;
   late bool _watermark;
 
@@ -124,7 +123,7 @@ class _HeaderEditorState extends State<_HeaderEditor> {
       for (final line in widget.header.extraLines)
         TextEditingController(text: line),
     ];
-    _logoUrl = widget.header.logoUrl;
+    _logoUrl = TextEditingController(text: widget.header.logoUrl);
     _position = widget.header.position;
     _watermark = widget.header.watermark;
   }
@@ -139,7 +138,7 @@ class _HeaderEditorState extends State<_HeaderEditor> {
     _sync(_phone2, widget.header.phone2);
     _sync(_phoneLabel, widget.header.phoneLabel);
     _sync(_phone2Label, widget.header.phone2Label);
-    _logoUrl = widget.header.logoUrl;
+    _sync(_logoUrl, widget.header.logoUrl);
     _position = widget.header.position;
     _watermark = widget.header.watermark;
   }
@@ -161,6 +160,7 @@ class _HeaderEditorState extends State<_HeaderEditor> {
     _phone2.dispose();
     _phoneLabel.dispose();
     _phone2Label.dispose();
+    _logoUrl.dispose();
     for (final line in _extraLines) {
       line.dispose();
     }
@@ -177,7 +177,7 @@ class _HeaderEditorState extends State<_HeaderEditor> {
         phone2: _phone2.text,
         phoneLabel: _phoneLabel.text,
         phone2Label: _phone2Label.text,
-        logoUrl: _logoUrl,
+        logoUrl: _logoUrl.text.trim(),
         position: _position,
         extraLines: [
           for (final line in _extraLines)
@@ -238,28 +238,7 @@ class _HeaderEditorState extends State<_HeaderEditor> {
             },
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              OutlinedButton(
-                onPressed: () async {
-                  final image = await pickProductImage();
-                  if (image == null || !mounted) return;
-                  setState(() => _logoUrl = image);
-                  _emit();
-                },
-                child: const Text('رفع شعار الشركة'),
-              ),
-              const SizedBox(width: 8),
-              if (_logoUrl.isNotEmpty)
-                TextButton(
-                  onPressed: () {
-                    setState(() => _logoUrl = '');
-                    _emit();
-                  },
-                  child: const Text('إزالة الشعار'),
-                ),
-            ],
-          ),
+          _box(_logoUrl, 'رابط الشعار (https://...)'),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             value: _watermark,

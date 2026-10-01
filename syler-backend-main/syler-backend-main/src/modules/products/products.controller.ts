@@ -45,6 +45,12 @@ export class ProductsController {
         return { success: true, data };
     }
 
+    @Get('images')
+    @ApiOperation({ summary: 'صور المنتجات لعرضها في النظام الأساسي' })
+    async images(@Query('page') page?: string) {
+        return this.productsService.imagePage(page);
+    }
+
     // ─── قائمة المنتجات مع الفلاتر والـ Pagination ───────────────────────────
     @Get()
     @ApiOperation({ summary: 'قائمة المنتجات مع فلترة وبحث وصفحات' })

@@ -30,6 +30,13 @@ export class RepresentativesController {
     return { success: true, data, message: 'تم إضافة المندوب وإنشاء حسابه بنجاح' };
   }
 
+  @Get('debt-ceilings')
+  @ApiOperation({ summary: 'سقف ذمة كل مندوب ومجموع أرصدة زبائنه على السحابة' })
+  async debtCeilings() {
+    const data = await this.repsService.debtCeilings();
+    return { success: true, data };
+  }
+
   @Get()
   @ApiOperation({ summary: 'قائمة المندوبين مع الفلاتر والبحث وتفاصيل العمولات' })
   @ApiQuery({ name: 'status', required: false, enum: rep_status_enum })

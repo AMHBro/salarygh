@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/auth/auth_session.dart';
 import '../../../core/auth/local_credentials.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/public_server_session.dart';
 import '../../../core/storage/auth_storage.dart';
 import '../../branches/data/branches_remote_repository.dart';
 
@@ -191,6 +192,17 @@ class AuthRepository {
         user: session.user,
       );
 
+      try {
+        await PublicServerSession.remember(
+          email: email,
+          password: password,
+        );
+      } catch (error) {
+        debugPrint(
+          '[STORE] public login skipped: $error',
+        );
+      }
+
       return session;
     } on DioException {
       rethrow;
@@ -236,6 +248,42 @@ class AuthRepository {
         (error.type ==
                 DioExceptionType.unknown &&
             error.response == null);
+  }
+
+  /// يتحقق أن الجلسة المحفوظة مقبولة على السيرفر الذي تتصل به الحاسبة الآن.
+  Future<bool> activeServerAcceptsSession() async {
+    final token = await authStorage.readAccessToken();
+    if (token == null ||
+        token.isEmpty ||
+        token == AuthStorage.offlineToken) {
+      if (token == AuthStorage.offlineToken) {
+        await authStorage.clear();
+      }
+      return false;
+    }
+
+    try {
+      await apiClient.get(
+        '/branches',
+        queryParameters: {
+          'page': 1,
+          'limit': 1,
+        },
+        requiresBranch: false,
+      );
+      final refresh = await authStorage.readRefreshToken() ?? '';
+      await authStorage.savePublicSession(
+        accessToken: token,
+        refreshToken: refresh,
+      );
+      return true;
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 401) {
+        await authStorage.clear();
+        return false;
+      }
+      return true;
+    }
   }
 
   Future<AuthSession?> currentSession() {

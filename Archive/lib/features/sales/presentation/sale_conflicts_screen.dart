@@ -79,7 +79,7 @@ class _SaleConflictsScreenState extends State<SaleConflictsScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'فاتورة الأوفلاين تبقى محفوظة. المادة تقف عن البيع حتى يقر المدير النقص أو يفك القفل بعد وصول بضاعة.',
+                'فاتورة الأوفلاين تبقى محفوظة. نقص الكمية يقفل المادة، ورفض السقف الائتماني ينتظر إقرار المدير.',
               ),
               const SizedBox(height: 16),
               if (_loading)
@@ -102,7 +102,11 @@ class _SaleConflictsScreenState extends State<SaleConflictsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                row.status == 'ACK' ? 'تم الإقرار' : 'بانتظار المراجعة',
+                                row.status == 'ACK'
+                                    ? 'تم الإقرار'
+                                    : row.status == 'SYNC_REJECTED'
+                                        ? 'مرفوضة ائتمانياً — بانتظار موافقة المدير'
+                                        : 'بانتظار المراجعة',
                                 style: const TextStyle(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 6),
@@ -113,13 +117,19 @@ class _SaleConflictsScreenState extends State<SaleConflictsScreen> {
                                   if (row.status != 'ACK')
                                     OutlinedButton(
                                       onPressed: () => _acknowledge(row),
-                                      child: const Text('إقرار النقص'),
+                                      child: Text(
+                                        row.status == 'SYNC_REJECTED'
+                                            ? 'إقرار المدير'
+                                            : 'إقرار النقص',
+                                      ),
                                     ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton(
-                                    onPressed: () => _release(row),
-                                    child: const Text('فك القفل'),
-                                  ),
+                                  if (row.status != 'SYNC_REJECTED') ...[
+                                    const SizedBox(width: 8),
+                                    ElevatedButton(
+                                      onPressed: () => _release(row),
+                                      child: const Text('فك القفل'),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ],

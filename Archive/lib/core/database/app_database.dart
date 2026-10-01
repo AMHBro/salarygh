@@ -77,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 33;
+  int get schemaVersion => 34;
 
   @override
   MigrationStrategy get migration {
@@ -851,6 +851,13 @@ class AppDatabase extends _$AppDatabase {
         if (from < 33) {
           await _ensureFloorTables((sql) => customStatement(sql));
         }
+
+        if (from < 34) {
+          await migrator.addColumn(
+            representatives,
+            representatives.maxDebtLimit,
+          );
+        }
       },
 
       beforeOpen: (details) async {
@@ -858,8 +865,50 @@ class AppDatabase extends _$AppDatabase {
           'PRAGMA foreign_keys = ON',
         );
         await _ensureFloorTables((sql) => customStatement(sql));
+        await _ensureStoreLinkTables((sql) => customStatement(sql));
+        await _ensurePrintSettings((sql) => customStatement(sql));
       },
     );
+  }
+
+  Future<void> _ensurePrintSettings(
+    Future<void> Function(String sql) exec,
+  ) async {
+    await exec('''
+      CREATE TABLE IF NOT EXISTS print_settings (
+        id TEXT PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _ensureStoreLinkTables(
+    Future<void> Function(String sql) exec,
+  ) async {
+    await exec('''
+      CREATE TABLE IF NOT EXISTS store_catalog_categories (
+        local_category_id TEXT PRIMARY KEY,
+        remote_category_id TEXT NOT NULL
+      )
+    ''');
+    await exec('''
+      CREATE TABLE IF NOT EXISTS store_catalog_links (
+        local_product_id TEXT PRIMARY KEY,
+        remote_product_id TEXT NOT NULL,
+        remote_variant_id TEXT NOT NULL,
+        remote_category_id TEXT NOT NULL,
+        stock_pushed REAL NOT NULL DEFAULT 0
+      )
+    ''');
+    await exec('''
+      CREATE TABLE IF NOT EXISTS cloud_store_orders (
+        id TEXT PRIMARY KEY,
+        order_number TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _ensureFloorTables(

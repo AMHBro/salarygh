@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/di/app_services.dart';
 import '../../../core/theme/app_theme.dart';
+import '../data/rep_debt_ceiling.dart';
 import '../models/representative_model.dart';
 
 class RepresentativesScreen extends StatefulWidget {
@@ -735,6 +736,9 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
     final commissionController = TextEditingController(
       text: representative?.commissionPercentage.toStringAsFixed(0) ?? '0',
     );
+    final debtLimitController = TextEditingController(
+      text: (representative?.maxDebtLimit ?? 0).toStringAsFixed(0),
+    );
     final selectedPrices = <String>{
       for (final price in (representative?.allowedPrices ??
               'wholesale,representative,retail')
@@ -877,6 +881,15 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
                         const SizedBox(
                           height: 14,
                         ),
+                        _DialogField(
+                          title: 'سقف الذمة المالي المسموح (دينار)',
+                          controller: debtLimitController,
+                          hint: '0 = بدون سقف',
+                          numeric: true,
+                        ),
+                        const SizedBox(
+                          height: 14,
+                        ),
                         const Text(
                           'الأسعار التي يبيع بها',
                           style: TextStyle(
@@ -995,6 +1008,12 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
                                   ),
                                 ) ??
                                     -1;
+                                final debtLimit = double.tryParse(
+                                  debtLimitController.text
+                                      .trim()
+                                      .replaceAll(',', ''),
+                                ) ??
+                                    -1;
 
                                 if (nameController.text.trim().isEmpty ||
                                     usernameController.text
@@ -1021,6 +1040,14 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
                                 if (commission < 0) {
                                   _showMessage(
                                     'العمولة بالدينار لا تكون سالبة.',
+                                  );
+
+                                  return;
+                                }
+
+                                if (debtLimit < 0) {
+                                  _showMessage(
+                                    'سقف الذمة لا يكون سالباً. اكتب 0 لإلغاء السقف.',
                                   );
 
                                   return;
@@ -1057,6 +1084,7 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
                                       locationController.text,
                                       commissionPercentage: commission,
                                       allowedPrices: selectedPrices.join(','),
+                                      maxDebtLimit: debtLimit,
                                     );
                                   } else {
                                     await _repository
@@ -1074,10 +1102,11 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
                                       locationController.text,
                                       commissionPercentage: commission,
                                       allowedPrices: selectedPrices.join(','),
+                                      maxDebtLimit: debtLimit,
                                     );
                                   }
 
-                                  if (!mounted) {
+                                  if (!dialogContext.mounted) {
                                     return;
                                   }
 
@@ -1312,7 +1341,7 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
                           note: noteController.text,
                         );
 
-                        if (!mounted) {
+                        if (!dialogContext.mounted) {
                           return;
                         }
 
@@ -1393,6 +1422,17 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  FutureBuilder<RepDebtWarning?>(
+                    future: RepDebtCeiling.forRepresentative(
+                      AppServices.database,
+                      representative.id,
+                    ),
+                    builder: (context, snapshot) {
+                      final warning = snapshot.data;
+                      if (warning == null) return const SizedBox.shrink();
+                      return RepDebtBanner(message: warning.message);
+                    },
+                  ),
                   Row(
                     children: [
                       Container(
@@ -1475,6 +1515,15 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
                   ),
                   const SizedBox(
                     height: 22,
+                  ),
+                  _InfoRow(
+                    title: 'سقف الذمة',
+                    value: representative.maxDebtLimit <= 0
+                        ? 'بدون سقف'
+                        : _formatPrice(representative.maxDebtLimit),
+                  ),
+                  const SizedBox(
+                    height: 12,
                   ),
                   _InfoRow(
                     title: 'نسبة العمولة',

@@ -783,19 +783,32 @@ export class EcommerceCatalogService {
         };
     }
 
-    async getWarehouse(audience?: string, pageRaw?: string, limitRaw?: string) {
+    async getWarehouse(
+        audience?: string,
+        pageRaw?: string,
+        limitRaw?: string,
+        searchRaw?: string,
+        categoryRaw?: string,
+    ) {
         const priceType =
             audience === 'agent'
                 ? price_type_enum.REP
                 : price_type_enum.RETAIL;
-        const limit = Math.min(50, Math.max(1, Number(limitRaw) || 20));
+        const limit = Math.min(40, Math.max(1, Number(limitRaw) || 20));
         const page = Math.max(1, Number(pageRaw) || 1);
         const offset = (page - 1) * limit;
+        const search = (searchRaw ?? '').trim().slice(0, 80);
+        const like = search ? `%${search}%` : null;
+        const categoryId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(categoryRaw ?? '')
+            ? categoryRaw
+            : null;
 
-        const idRows = await this.prisma.$queryRaw<{ id: string }[]>`
+        const idRows = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
             SELECT p.id
             FROM public.products p
             WHERE p.is_active = true
+              AND (${like}::text IS NULL OR p.name_ar ILIKE ${like} OR COALESCE(p.sku, '') ILIKE ${like} OR COALESCE(p.barcode, '') ILIKE ${like})
+              AND (${categoryId}::uuid IS NULL OR p.category_id = ${categoryId}::uuid)
               AND EXISTS (
                 SELECT 1
                 FROM public.product_variants v
@@ -803,16 +816,23 @@ export class EcommerceCatalogService {
                 WHERE v.product_id = p.id
                   AND v.is_active = true
                 GROUP BY v.id
-                HAVING SUM(s.quantity_on_hand - s.quantity_reserved) > 0
+                HAVING SUM(s.quantity_on_hand - s.quantity_reserved)
+                    - COALESCE((
+                        SELECT SUM(h.quantity)
+                        FROM public.stock_holds h
+                        WHERE h.variant_id = v.id
+                          AND h.expires_at > NOW()
+                      ), 0) > 0
               )
             ORDER BY p.name_ar ASC
             LIMIT ${limit + 1}
             OFFSET ${offset}
-        `;
+        `);
         const hasMore = idRows.length > limit;
         const pageIds = idRows.slice(0, limit).map((row) => row.id);
 
-        const familyRows = await this.prisma.$queryRaw<{ id: string; name: string }[]>`
+        const familyRows = page === 1
+            ? await this.prisma.$queryRaw<{ id: string; name: string }[]>(Prisma.sql`
             SELECT DISTINCT c.id, c.name_ar AS name
             FROM public.products p
             JOIN public.categories c ON c.id = p.category_id
@@ -824,10 +844,17 @@ export class EcommerceCatalogService {
                 WHERE v.product_id = p.id
                   AND v.is_active = true
                 GROUP BY v.id
-                HAVING SUM(s.quantity_on_hand - s.quantity_reserved) > 0
+                HAVING SUM(s.quantity_on_hand - s.quantity_reserved)
+                    - COALESCE((
+                        SELECT SUM(h.quantity)
+                        FROM public.stock_holds h
+                        WHERE h.variant_id = v.id
+                          AND h.expires_at > NOW()
+                      ), 0) > 0
               )
             ORDER BY c.name_ar ASC
-        `;
+        `)
+            : [];
 
         const rows = pageIds.length === 0
             ? []
@@ -864,6 +891,9 @@ export class EcommerceCatalogService {
         rows.sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0));
 
         const products = [];
+        const heldByVariant = await this.activeHoldQuantities(
+            rows.flatMap((product) => product.product_variants.map((variant) => variant.id)),
+        );
 
         for (const product of rows) {
             let stock = 0;
@@ -879,6 +909,7 @@ export class EcommerceCatalogService {
                 for (const level of variant.stock_levels) {
                     stock += Number(level.quantity_on_hand) - Number(level.quantity_reserved);
                 }
+                stock -= heldByVariant.get(variant.id) ?? 0;
                 for (const item of variant.product_prices) {
                     if (item.unit_id !== product.base_unit_id) continue;
                     const amount = Math.round(Number(item.price));
@@ -924,5 +955,23 @@ export class EcommerceCatalogService {
         };
     }
 
-
+    private async activeHoldQuantities(variantIds: string[]) {
+        const unique = [...new Set(variantIds.filter(Boolean))];
+        const held = new Map<string, number>();
+        if (unique.length === 0) {
+            return held;
+        }
+        const rows = await this.prisma.$queryRaw<Array<{ variant_id: string; held: unknown }>>(Prisma.sql`
+            SELECT h.variant_id::text AS variant_id,
+                   COALESCE(SUM(h.quantity), 0) AS held
+            FROM public.stock_holds h
+            WHERE h.expires_at > NOW()
+              AND h.variant_id IN (${Prisma.join(unique.map((id) => Prisma.sql`${id}::uuid`))})
+            GROUP BY h.variant_id
+        `);
+        for (const row of rows) {
+            held.set(row.variant_id, Number(row.held) || 0);
+        }
+        return held;
+    }
 }

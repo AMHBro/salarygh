@@ -73,14 +73,14 @@ void main() {
 
     await tester.tap(find.text('فاتورة جديدة'));
     await tester.pump();
-    expect(find.text('اختر عائلة المواد'), findsOneWidget);
-    await tester.tap(find.text('مواد غذائية'));
+    expect(find.text('مواد غذائية'), findsWidgets);
+    await tester.tap(find.text('مواد غذائية').first);
     await tester.pump();
     expect(find.text('أضف مواد إلى السلة'), findsOneWidget);
 
-    final sugarAdd = find.byIcon(Icons.add).at(4);
-    await tester.ensureVisible(sugarAdd);
-    await tester.tap(sugarAdd);
+    final firstAdd = find.byIcon(Icons.add).first;
+    await tester.ensureVisible(firstAdd);
+    await tester.tap(firstAdd);
     await tester.pump();
 
     TextField paidField() {
@@ -94,10 +94,10 @@ void main() {
     expect(paidField().readOnly, isTrue);
     expect(paidField().controller!.text, '0');
 
-    await tester.tap(find.text('نقدي'));
+    await tester.tap(find.text('نقداً'));
     await tester.pump();
     expect(paidField().readOnly, isTrue);
-    expect(paidField().controller!.text, '2500');
+    expect(paidField().controller!.text, '8000');
 
     await tester.tap(find.text('جزئي'));
     await tester.pump();
@@ -122,28 +122,37 @@ void main() {
     expect(find.text('طلبات بانتظار: 1'), findsOneWidget);
 
     await tester.tap(find.text('إلغاء'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('ستُغلق الزيارة الحالية دون حفظ أي حركة.'), findsOneWidget);
     await tester.tap(find.text('تأكيد'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('المسارات'), findsOneWidget);
     expect(find.text('متابعة'), findsNothing);
 
-    await tester.tap(find.text('فتح زيارة').at(1));
+    final secondOpen = find.text('فتح زيارة').at(1);
+    await tester.ensureVisible(secondOpen);
+    await tester.pump();
+    await tester.tap(secondOpen);
     await tester.pump();
     await tester.tap(find.text('تأجيل'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('ستُنقل إلى المؤجلة ويمكن استئنافها لاحقاً من المسارات.'), findsOneWidget);
     await tester.tap(find.text('تأكيد'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
     await tester.tap(find.text('فتح زيارة').first);
     await tester.pump();
     await tester.tap(find.text('إتمام الزيارة'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('سيتم إرسال حالة الإتمام إلى الباكند.'), findsOneWidget);
     await tester.tap(find.text('تأكيد'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('المسارات'), findsOneWidget);
   });
 
@@ -151,21 +160,16 @@ void main() {
     await pumpApp(tester, const AliraShopApp());
 
     expect(find.text('المتجر'), findsOneWidget);
-    expect(find.text('للزبائن · اختر الكمية ثم أرسل الطلب'), findsOneWidget);
-    expect(find.text('اختر عائلة المواد'), findsOneWidget);
-    await tester.tap(find.text('مواد غذائية'));
+    expect(find.text('سعر المفرد'), findsOneWidget);
+    expect(find.text('مواد غذائية'), findsWidgets);
+    await tester.tap(find.text('إضافة').first);
     await tester.pump();
-    expect(find.text('السلة · IQD 0'), findsOneWidget);
+    expect(find.text('1 مواد'), findsOneWidget);
+    expect(find.text('8,000 د.ع'), findsWidgets);
 
-    await tester.tap(find.byIcon(Icons.add).first);
+    await tester.tap(find.text('مراجعة وإرسال الطلب'));
     await tester.pump();
-    expect(find.text('السلة · IQD 8,000'), findsOneWidget);
-
-    await tester.tap(find.text('السلة · IQD 8,000'));
-    await tester.pump();
-    expect(find.text('عدد القطع 1'), findsOneWidget);
-
-    await tester.tap(find.text('إرسال'));
+    await tester.tap(find.text('متابعة البيانات'));
     await tester.pump();
     await tester.tap(find.text('إرسال الطلب'));
     await tester.pump();
@@ -175,7 +179,7 @@ void main() {
     );
 
     await tester.enterText(
-      find.byWidgetPredicate((widget) => widget is TextField && widget.decoration?.labelText == 'اسم الزبون'),
+      find.byWidgetPredicate((widget) => widget is TextField && widget.decoration?.labelText == 'الاسم'),
       'سارة',
     );
     await tester.enterText(
@@ -207,11 +211,10 @@ void main() {
 
     await tester.tap(find.text('طلب جديد'));
     await tester.pump();
-    expect(find.text('السلة · IQD 0'), findsOneWidget);
-
-    await tester.tap(find.text('السلة · IQD 0'));
-    await tester.pump();
-    expect(find.text('السلة فارغة'), findsOneWidget);
-    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'إرسال')).onPressed, isNull);
+    expect(find.text('0 مواد'), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'مراجعة وإرسال الطلب')).onPressed,
+      isNull,
+    );
   });
 }

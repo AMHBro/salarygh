@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
@@ -419,6 +420,8 @@ class DirectSalesSyncRemoteGateway
       sale.discount,
       'paid_amount':
       sale.paidAmount,
+      'currency':
+      sale.currency,
       'items':
       apiItems,
       'hold_keys':
@@ -431,14 +434,25 @@ class DirectSalesSyncRemoteGateway
     }
 
     // =========================================================================
-    // POST /direct-sales
+    // POST /sync/upload
+    // يعيد فحص سقف الدين والحد الائتماني قبل دمج الفاتورة.
     // =========================================================================
 
-    final response =
-    await apiClient.post(
-      '/direct-sales',
-      data: payload,
-    );
+    Response<dynamic> response;
+    try {
+      response = await apiClient.post(
+        '/sync/upload',
+        data: payload,
+      );
+    } on DioException catch (error) {
+      if (error.response?.statusCode != 404) {
+        rethrow;
+      }
+      response = await apiClient.post(
+        '/direct-sales',
+        data: payload,
+      );
+    }
 
     final responseData =
     _extractResponseMap(

@@ -16,7 +16,7 @@ class AliraAgentApi {
   String? token;
 
   Future<void> _useActiveServer() async {
-    _dio.options.baseUrl = await ServerEndpoint.instance.activeBaseUrl();
+    _dio.options.baseUrl = await ServerEndpoint.instance.publicBaseUrl();
   }
 
   Future<Map<String, dynamic>> login(String username, String password) async {
@@ -63,6 +63,20 @@ class AliraAgentApi {
     final body = response.data;
     if (body is! Map) {
       throw StateError('تعذر إضافة المكتب');
+    }
+    return Map<String, dynamic>.from(body);
+  }
+
+  Future<Map<String, dynamic>> accounts() async {
+    await _useActiveServer();
+    final response = await _dio.get<dynamic>(
+      '/store/representative/accounts',
+      queryParameters: const {'limit': 100},
+      options: Options(headers: {'authorization': 'Bearer $token'}),
+    );
+    final body = response.data;
+    if (body is! Map) {
+      throw StateError('تعذر قراءة حسابات المندوب');
     }
     return Map<String, dynamic>.from(body);
   }

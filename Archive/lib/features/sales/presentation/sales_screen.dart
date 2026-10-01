@@ -657,6 +657,14 @@ class _SalesScreenState extends State<SalesScreen> {
       title: 'قائمة بيع',
       number: '',
       party: _invoiceCustomerName,
+      phone: _selectedCustomer?.phone ?? '',
+      representative: _selectedRepresentative?.name ?? '',
+      itemCodes: [
+        for (final item in _cart)
+          (item.product.sku ?? '').trim().isNotEmpty
+              ? item.product.sku!.trim()
+              : item.product.barcode,
+      ],
       printedDate: printDateText(now),
       printedTime: printTimeText(now),
       documentType: _paymentType.title,
@@ -695,6 +703,7 @@ class _SalesScreenState extends State<SalesScreen> {
       kind: 'وصل',
       title: 'وصل قبض',
       party: _invoiceCustomerName,
+      phone: _selectedCustomer?.phone ?? '',
       printedDate: printDateText(now),
       printedTime: printTimeText(now),
       documentTypeLabel: 'النوع',
@@ -1073,10 +1082,12 @@ class _SalesScreenState extends State<SalesScreen> {
     if (warehouseId == null) {
       return false;
     }
+    final available = _availableVariantStock(variantId);
     final message = await FloorGuard.reserve(
       localVariantId: variantId,
       localWarehouseId: warehouseId,
       pieces: pieces,
+      requireCloud: available > 0 && pieces + 0.001 >= available,
     );
     if (!mounted) {
       return false;

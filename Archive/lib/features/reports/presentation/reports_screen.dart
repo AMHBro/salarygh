@@ -952,6 +952,7 @@ class _ReportsScreenState extends State<ReportsScreen>
   void _printReport() {
     final columns = _printColumns();
     final head = _statementHead();
+    final summary = _accountSummary();
     showPrintPreview(
       context,
       PrintDocument(
@@ -968,7 +969,74 @@ class _ReportsScreenState extends State<ReportsScreen>
               for (final column in columns) _formatCell(row[column]),
             ],
         ],
+        accountStatement: summary != null,
+        debitTotal: summary?.debit ?? 0,
+        creditTotal: summary?.credit ?? 0,
+        lastPaymentDate: summary?.lastPaymentDate ?? '',
+        lastPaymentAmount: summary?.lastPaymentAmount ?? 0,
+        remainingIqd: summary?.balance ?? 0,
       ),
+    );
+  }
+
+  _AccountSummary? _accountSummary() {
+    final title = _report.title;
+    final path = _report.path;
+    final ledger = _rows.isNotEmpty &&
+        _rows.first.containsKey('debit_iqd') &&
+        _rows.first.containsKey('credit_iqd');
+    final account = ledger ||
+        path.contains('customers/statement') ||
+        title.contains('كشف حساب') ||
+        (title.contains('مورد') && title.contains('حساب'));
+    if (!account) {
+      return null;
+    }
+    if (_rows.isEmpty) {
+      return const _AccountSummary(
+        debit: 0,
+        credit: 0,
+        balance: 0,
+        lastPaymentDate: '',
+        lastPaymentAmount: 0,
+      );
+    }
+    var debit = 0.0;
+    var credit = 0.0;
+    DateTime? lastAt;
+    var lastAmount = 0.0;
+    var sawCredit = false;
+    for (final row in _rows) {
+      final rowDebit = _asDouble(row['debit_iqd'] ?? row['debit_total_iqd']);
+      final rowCredit = _asDouble(row['credit_iqd'] ?? row['credit_total_iqd']);
+      debit += rowDebit;
+      credit += rowCredit;
+      if (rowCredit <= 0) {
+        continue;
+      }
+      final raw = '${row['occurred_at'] ?? row['invoice_date'] ?? ''}';
+      final parsed = DateTime.tryParse(raw);
+      if (parsed != null) {
+        if (lastAt == null || !parsed.isBefore(lastAt)) {
+          lastAt = parsed;
+          lastAmount = rowCredit;
+          sawCredit = true;
+        }
+      } else if (lastAt == null) {
+        lastAmount = rowCredit;
+        sawCredit = true;
+      }
+    }
+    final last = _rows.last;
+    final running = last.containsKey('running_balance_iqd')
+        ? _asDouble(last['running_balance_iqd'])
+        : debit - credit;
+    return _AccountSummary(
+      debit: debit,
+      credit: credit,
+      balance: running,
+      lastPaymentDate: lastAt == null ? '' : printDateText(lastAt),
+      lastPaymentAmount: sawCredit ? lastAmount : 0,
     );
   }
 
@@ -1194,6 +1262,22 @@ class _MonthChart extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AccountSummary {
+  final double debit;
+  final double credit;
+  final double balance;
+  final String lastPaymentDate;
+  final double lastPaymentAmount;
+
+  const _AccountSummary({
+    required this.debit,
+    required this.credit,
+    required this.balance,
+    required this.lastPaymentDate,
+    required this.lastPaymentAmount,
+  });
 }
 
 class _StatementHead {

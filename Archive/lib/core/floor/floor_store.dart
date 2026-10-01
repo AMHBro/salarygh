@@ -266,6 +266,36 @@ class FloorStore {
       'DELETE FROM floor_pending_events WHERE id = $id',
     );
   }
+
+  static Future<void> noteSyncRejection(
+    AppDatabase database, {
+    required String saleId,
+    required String message,
+  }) async {
+    await ensureTables(database);
+    final clean = message
+        .replaceFirst('SYNC_REJECTED', '')
+        .replaceAll('Exception:', '')
+        .trim();
+    await database.customInsert(
+      '''
+      INSERT INTO sale_conflicts (
+        id, sale_id, variant_id, server_variant_id, message, status, created_at
+      ) VALUES (?, ?, '', '', ?, 'SYNC_REJECTED', ?)
+      ON CONFLICT(id) DO NOTHING
+      ''',
+      variables: [
+        Variable.withString('sync-rejected-$saleId'),
+        Variable.withString(saleId),
+        Variable.withString(
+          clean.isEmpty
+              ? 'تم رفض الفاتورة لأن السقف الائتماني لم يعد يكفي. تحتاج موافقة المدير.'
+              : clean,
+        ),
+        Variable.withString(DateTime.now().toIso8601String()),
+      ],
+    );
+  }
 }
 
 class SaleConflictRow {

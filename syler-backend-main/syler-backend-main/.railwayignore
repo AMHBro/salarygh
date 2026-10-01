@@ -1,0 +1,9 @@
+nixpacks.toml
+node_modules
+dist
+pgdata
+pgdata-utf8
+backups
+coverage
+.env
+*.log

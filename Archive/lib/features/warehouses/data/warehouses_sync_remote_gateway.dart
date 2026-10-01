@@ -503,17 +503,18 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
       return;
     }
 
-    // -------------------------------------------------------------------------
-    // CASE 5
-    // Genuine edit of existing synced warehouse.
-    //
-    // ما عدنا Endpoint مؤكد للتعديل العام لحد الآن.
-    // -------------------------------------------------------------------------
+    if (originalPayload['action']?.toString() == 'enable') {
+      await _enableWarehouse(
+        localWarehouseId: localWarehouseId,
+        serverId: serverId,
+      );
 
-    throw StateError(
-      'Warehouse update cannot be pushed yet because '
-          'the current backend contract does not expose a confirmed '
-          'warehouse edit endpoint.',
+      return;
+    }
+
+    await _pushWarehouseDetails(
+      localWarehouseId: localWarehouseId,
+      serverId: serverId,
     );
   }
 
@@ -678,6 +679,82 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
       );
 
       rethrow;
+    }
+  }
+
+  // ===========================================================================
+  // ENABLE
+  // ===========================================================================
+
+  Future<void> _enableWarehouse({
+    required String localWarehouseId,
+    required String serverId,
+  }) async {
+    final endpoint =
+        '/warehouses/$serverId/enable';
+
+    debugPrint(
+      '[WAREHOUSE SYNC] POST $endpoint',
+    );
+
+    try {
+      final response = await apiClient.post(
+        endpoint,
+      );
+
+      _printSuccess(
+        action: 'POST $endpoint',
+        response: response,
+      );
+
+      final data = _extractData(
+        response.data,
+      );
+
+      if (data.isNotEmpty) {
+        await _saveServerSnapshot(
+          localWarehouseId: localWarehouseId,
+          data: data,
+        );
+      }
+
+      await (database.update(
+        database.warehouses,
+      )..where(
+            (table) => table.id.equals(
+          localWarehouseId,
+        ),
+      ))
+          .write(
+        WarehousesCompanion(
+          isActive: const Value(
+            true,
+          ),
+          status: const Value(
+            'ACTIVE',
+          ),
+          updatedAt: Value(
+            DateTime.now(),
+          ),
+        ),
+      );
+    } on DioException catch (error) {
+      _printDioError(
+        action: 'POST $endpoint',
+        error: error,
+      );
+
+      rethrow;
+    }
+  }
+
+  bool _statusMeansActive(String status) {
+    switch (status.trim().toUpperCase()) {
+      case 'INACTIVE':
+      case 'DISABLED':
+        return false;
+      default:
+        return true;
     }
   }
 
@@ -959,10 +1036,18 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
         );
 
         if (local != null) {
+          final office = !kIsWeb;
+          if (office) {
+            await _pushDesktopDetails(
+              local: local,
+              remote: remote,
+            );
+          }
           await _savePulledWarehouse(
             localWarehouseId: local.id,
             data: remote,
             updateParent: false,
+            keepLocalDetails: office,
           );
 
           serverToLocalId[serverId] =
@@ -1326,7 +1411,7 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
           type == 'MAIN',
         ),
         isActive: Value(
-          status != 'DISABLED',
+          _statusMeansActive(status),
         ),
         serverVersion:
         const Value(
@@ -1341,6 +1426,124 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
   }
 
   // ===========================================================================
+  // PUSH DESKTOP DETAILS
+  //
+  // سطح المكتب هو مرجع الاسم والعنوان والرمز والسعة والملاحظات.
+  // الويب يقرأ نفس الحقول من السيرفر بعد هذا الرفع.
+  // ===========================================================================
+
+  Future<void> _pushWarehouseDetails({
+    required String localWarehouseId,
+    required String serverId,
+  }) async {
+    final local = await _getWarehouse(
+      localWarehouseId,
+    );
+    if (local == null) {
+      return;
+    }
+    await _sendWarehouseDetails(
+      serverId: serverId,
+      name: local.name,
+      code: local.code,
+      address: local.address,
+      notes: local.notes,
+      capacity: local.capacity,
+    );
+  }
+
+  Future<void> _pushDesktopDetails({
+    required Warehouse local,
+    required Map<String, dynamic> remote,
+  }) async {
+    final serverId = _clean(local.serverId) ?? _clean(remote['id']);
+    if (serverId == null) {
+      return;
+    }
+    final remoteName = _clean(remote['name']) ?? '';
+    final remoteCode = _clean(remote['code']) ?? '';
+    final remoteAddress = _clean(remote['address']) ?? '';
+    final remoteNotes = _clean(remote['notes']) ?? '';
+    final remoteCapacity = _toDoubleNullable(remote['capacity']);
+    final localName = local.name.trim();
+    final localCode = _clean(local.code) ?? '';
+    final localAddress = _clean(local.address) ?? '';
+    final localNotes = _clean(local.notes) ?? '';
+    final sameCapacity = (local.capacity == null && remoteCapacity == null) ||
+        (local.capacity != null &&
+            remoteCapacity != null &&
+            (local.capacity! - remoteCapacity).abs() < 0.001);
+    if (localName == remoteName &&
+        localCode == remoteCode &&
+        localAddress == remoteAddress &&
+        localNotes == remoteNotes &&
+        sameCapacity) {
+      return;
+    }
+    await _sendWarehouseDetails(
+      serverId: serverId,
+      name: local.name,
+      code: local.code,
+      address: local.address,
+      notes: local.notes,
+      capacity: local.capacity,
+    );
+  }
+
+  Future<void> _sendWarehouseDetails({
+    required String serverId,
+    required String name,
+    required String? code,
+    required String? address,
+    required String? notes,
+    required double? capacity,
+  }) async {
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) {
+      return;
+    }
+    final body = <String, dynamic>{
+      'name': cleanName,
+      'address': address?.trim() ?? '',
+      'notes': notes?.trim() ?? '',
+    };
+    final cleanCode = _clean(code);
+    if (cleanCode != null) {
+      body['code'] = cleanCode;
+    }
+    if (capacity != null) {
+      body['capacity'] = capacity;
+    }
+    try {
+      await apiClient.patch(
+        '/warehouses/$serverId',
+        data: body,
+      );
+    } on DioException catch (error) {
+      if (body.containsKey('code')) {
+        body.remove('code');
+        try {
+          await apiClient.patch(
+            '/warehouses/$serverId',
+            data: body,
+          );
+          return;
+        } on DioException catch (retryError) {
+          _printDioError(
+            action: 'PATCH /warehouses/$serverId',
+            error: retryError,
+          );
+          return;
+        }
+      }
+      _printDioError(
+        action: 'PATCH /warehouses/$serverId',
+        error: error,
+      );
+    }
+  }
+
+  // ===========================================================================
   // SAVE PULLED WAREHOUSE
   // ===========================================================================
 
@@ -1348,6 +1551,7 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
     required String localWarehouseId,
     required Map<String, dynamic> data,
     required bool updateParent,
+    bool keepLocalDetails = false,
   }) async {
     final current = await _getWarehouse(
       localWarehouseId,
@@ -1357,6 +1561,10 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
       throw StateError(
         'Local warehouse not found while saving pulled warehouse.',
       );
+    }
+
+    if (current.deletedAt != null) {
+      return;
     }
 
     final serverId = _requiredString(
@@ -1413,18 +1621,22 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
         serverId: Value(
           serverId,
         ),
-        code: Value(
-          _clean(
-            data['code'],
-          ) ??
-              current.code,
-        ),
-        name: Value(
-          _clean(
-            data['name'],
-          ) ??
-              current.name,
-        ),
+        code: keepLocalDetails
+            ? const Value.absent()
+            : Value(
+                _clean(
+                      data['code'],
+                    ) ??
+                    current.code,
+              ),
+        name: keepLocalDetails
+            ? const Value.absent()
+            : Value(
+                _clean(
+                      data['name'],
+                    ) ??
+                    current.name,
+              ),
         branchId: Value(
           _clean(
             data['branch_id'],
@@ -1446,24 +1658,30 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
           ) ??
               current.managerId,
         ),
-        address: Value(
-          _clean(
-            data['address'],
-          ) ??
-              current.address,
-        ),
-        capacity: Value(
-          _toDoubleNullable(
-            data['capacity'],
-          ) ??
-              current.capacity,
-        ),
-        notes: Value(
-          _clean(
-            data['notes'],
-          ) ??
-              current.notes,
-        ),
+        address: keepLocalDetails
+            ? const Value.absent()
+            : Value(
+                _clean(
+                      data['address'],
+                    ) ??
+                    current.address,
+              ),
+        capacity: keepLocalDetails
+            ? const Value.absent()
+            : Value(
+                _toDoubleNullable(
+                      data['capacity'],
+                    ) ??
+                    current.capacity,
+              ),
+        notes: keepLocalDetails
+            ? const Value.absent()
+            : Value(
+                _clean(
+                      data['notes'],
+                    ) ??
+                    current.notes,
+              ),
         rejectionReason: Value(
           _clean(
             data['rejection_reason'],
@@ -1473,7 +1691,7 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
           type == 'MAIN',
         ),
         isActive: Value(
-          status != 'DISABLED',
+          _statusMeansActive(status),
         ),
         updatedAt: Value(
           updatedAt,
@@ -1641,7 +1859,7 @@ class WarehousesSyncRemoteGateway implements SyncRemoteGateway {
           type == 'MAIN',
         ),
         isActive: Value(
-          status != 'DISABLED',
+          _statusMeansActive(status),
         ),
         updatedAt: Value(
           updatedAt,

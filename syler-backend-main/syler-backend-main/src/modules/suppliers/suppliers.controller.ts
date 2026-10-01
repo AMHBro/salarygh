@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Re
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { SuppliersService } from './suppliers.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
+import { CreateSupplierSheetDto } from './dto/create-supplier-sheet.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -30,6 +31,19 @@ export class SuppliersController {
         const data = await this.suppliersService.findAll(query);
         return { success: true, data, message: 'تم الحصول على قائمة الموردين بنجاح' }
     }
+    @Get('sheets')
+    @ApiOperation({ summary: 'صور مجلدات الموردين لتنزيلها في النظام الأساسي' })
+    async listSheets(@Query('page') page?: string) {
+        return this.suppliersService.listSheets(page);
+    }
+
+    @Post(':id/sheets')
+    @ApiOperation({ summary: 'إضافة صورة إلى مجلد المورد' })
+    async addSheet(@Param('id') id: string, @Body() dto: CreateSupplierSheetDto) {
+        const data = await this.suppliersService.addSheet(id, dto);
+        return { success: true, data, message: 'تم حفظ صورة المورد' };
+    }
+
     @Get(':id')
     @ApiOperation({ summary: 'تفاصيل المورد' })
     async findOne(@Param('id') id: string) {

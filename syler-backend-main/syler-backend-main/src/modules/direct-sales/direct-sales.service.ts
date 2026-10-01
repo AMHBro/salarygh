@@ -322,6 +322,13 @@ export class DirectSalesService {
                 userId ??
                 null,
 
+              sync_revalidate:
+                dto.sync_revalidate === true,
+
+              currency:
+                dto.currency ??
+                null,
+
               items:
                 dto.items.map(
                   (item) => ({

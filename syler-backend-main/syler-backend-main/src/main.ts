@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -6,7 +7,9 @@ import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exce
 import { allowedOriginsFromEnv, isAllowedOrigin } from './common/cors';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.use(json({ limit: '4mb' }));
+  app.use(urlencoded({ extended: true, limit: '4mb' }));
   const extraOrigins = allowedOriginsFromEnv(process.env.CORS_ORIGINS);
   app.enableCors({
     origin: (

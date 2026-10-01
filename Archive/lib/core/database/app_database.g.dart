@@ -16951,6 +16951,18 @@ class $RepresentativesTable extends Representatives
     requiredDuringInsert: false,
     defaultValue: const Constant('wholesale,representative,retail'),
   );
+  static const VerificationMeta _maxDebtLimitMeta = const VerificationMeta(
+    'maxDebtLimit',
+  );
+  @override
+  late final GeneratedColumn<double> maxDebtLimit = GeneratedColumn<double>(
+    'max_debt_limit',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _isActiveMeta = const VerificationMeta(
     'isActive',
   );
@@ -17024,6 +17036,7 @@ class $RepresentativesTable extends Representatives
     locationLink,
     commissionPercentage,
     allowedPrices,
+    maxDebtLimit,
     isActive,
     serverVersion,
     createdAt,
@@ -17126,6 +17139,15 @@ class $RepresentativesTable extends Representatives
         ),
       );
     }
+    if (data.containsKey('max_debt_limit')) {
+      context.handle(
+        _maxDebtLimitMeta,
+        maxDebtLimit.isAcceptableOrUnknown(
+          data['max_debt_limit']!,
+          _maxDebtLimitMeta,
+        ),
+      );
+    }
     if (data.containsKey('is_active')) {
       context.handle(
         _isActiveMeta,
@@ -17220,6 +17242,10 @@ class $RepresentativesTable extends Representatives
         DriftSqlType.string,
         data['${effectivePrefix}allowed_prices'],
       )!,
+      maxDebtLimit: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}max_debt_limit'],
+      )!,
       isActive: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_active'],
@@ -17263,6 +17289,9 @@ class Representative extends DataClass implements Insertable<Representative> {
 
   /// أسعار البيع المسموحة للمندوب، مفصولة بفاصلة.
   final String allowedPrices;
+
+  /// 0 يعني لا يوجد سقف. أي قيمة أكبر تُقارن بمجموع ديون زبائن المندوب.
+  final double maxDebtLimit;
   final bool isActive;
   final int serverVersion;
   final DateTime createdAt;
@@ -17280,6 +17309,7 @@ class Representative extends DataClass implements Insertable<Representative> {
     this.locationLink,
     required this.commissionPercentage,
     required this.allowedPrices,
+    required this.maxDebtLimit,
     required this.isActive,
     required this.serverVersion,
     required this.createdAt,
@@ -17304,6 +17334,7 @@ class Representative extends DataClass implements Insertable<Representative> {
     }
     map['commission_percentage'] = Variable<double>(commissionPercentage);
     map['allowed_prices'] = Variable<String>(allowedPrices);
+    map['max_debt_limit'] = Variable<double>(maxDebtLimit);
     map['is_active'] = Variable<bool>(isActive);
     map['server_version'] = Variable<int>(serverVersion);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -17331,6 +17362,7 @@ class Representative extends DataClass implements Insertable<Representative> {
           : Value(locationLink),
       commissionPercentage: Value(commissionPercentage),
       allowedPrices: Value(allowedPrices),
+      maxDebtLimit: Value(maxDebtLimit),
       isActive: Value(isActive),
       serverVersion: Value(serverVersion),
       createdAt: Value(createdAt),
@@ -17360,6 +17392,7 @@ class Representative extends DataClass implements Insertable<Representative> {
         json['commissionPercentage'],
       ),
       allowedPrices: serializer.fromJson<String>(json['allowedPrices']),
+      maxDebtLimit: serializer.fromJson<double>(json['maxDebtLimit']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       serverVersion: serializer.fromJson<int>(json['serverVersion']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -17382,6 +17415,7 @@ class Representative extends DataClass implements Insertable<Representative> {
       'locationLink': serializer.toJson<String?>(locationLink),
       'commissionPercentage': serializer.toJson<double>(commissionPercentage),
       'allowedPrices': serializer.toJson<String>(allowedPrices),
+      'maxDebtLimit': serializer.toJson<double>(maxDebtLimit),
       'isActive': serializer.toJson<bool>(isActive),
       'serverVersion': serializer.toJson<int>(serverVersion),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -17402,6 +17436,7 @@ class Representative extends DataClass implements Insertable<Representative> {
     Value<String?> locationLink = const Value.absent(),
     double? commissionPercentage,
     String? allowedPrices,
+    double? maxDebtLimit,
     bool? isActive,
     int? serverVersion,
     DateTime? createdAt,
@@ -17419,6 +17454,7 @@ class Representative extends DataClass implements Insertable<Representative> {
     locationLink: locationLink.present ? locationLink.value : this.locationLink,
     commissionPercentage: commissionPercentage ?? this.commissionPercentage,
     allowedPrices: allowedPrices ?? this.allowedPrices,
+    maxDebtLimit: maxDebtLimit ?? this.maxDebtLimit,
     isActive: isActive ?? this.isActive,
     serverVersion: serverVersion ?? this.serverVersion,
     createdAt: createdAt ?? this.createdAt,
@@ -17450,6 +17486,9 @@ class Representative extends DataClass implements Insertable<Representative> {
       allowedPrices: data.allowedPrices.present
           ? data.allowedPrices.value
           : this.allowedPrices,
+      maxDebtLimit: data.maxDebtLimit.present
+          ? data.maxDebtLimit.value
+          : this.maxDebtLimit,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
       serverVersion: data.serverVersion.present
           ? data.serverVersion.value
@@ -17474,6 +17513,7 @@ class Representative extends DataClass implements Insertable<Representative> {
           ..write('locationLink: $locationLink, ')
           ..write('commissionPercentage: $commissionPercentage, ')
           ..write('allowedPrices: $allowedPrices, ')
+          ..write('maxDebtLimit: $maxDebtLimit, ')
           ..write('isActive: $isActive, ')
           ..write('serverVersion: $serverVersion, ')
           ..write('createdAt: $createdAt, ')
@@ -17496,6 +17536,7 @@ class Representative extends DataClass implements Insertable<Representative> {
     locationLink,
     commissionPercentage,
     allowedPrices,
+    maxDebtLimit,
     isActive,
     serverVersion,
     createdAt,
@@ -17517,6 +17558,7 @@ class Representative extends DataClass implements Insertable<Representative> {
           other.locationLink == this.locationLink &&
           other.commissionPercentage == this.commissionPercentage &&
           other.allowedPrices == this.allowedPrices &&
+          other.maxDebtLimit == this.maxDebtLimit &&
           other.isActive == this.isActive &&
           other.serverVersion == this.serverVersion &&
           other.createdAt == this.createdAt &&
@@ -17536,6 +17578,7 @@ class RepresentativesCompanion extends UpdateCompanion<Representative> {
   final Value<String?> locationLink;
   final Value<double> commissionPercentage;
   final Value<String> allowedPrices;
+  final Value<double> maxDebtLimit;
   final Value<bool> isActive;
   final Value<int> serverVersion;
   final Value<DateTime> createdAt;
@@ -17554,6 +17597,7 @@ class RepresentativesCompanion extends UpdateCompanion<Representative> {
     this.locationLink = const Value.absent(),
     this.commissionPercentage = const Value.absent(),
     this.allowedPrices = const Value.absent(),
+    this.maxDebtLimit = const Value.absent(),
     this.isActive = const Value.absent(),
     this.serverVersion = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -17573,6 +17617,7 @@ class RepresentativesCompanion extends UpdateCompanion<Representative> {
     this.locationLink = const Value.absent(),
     this.commissionPercentage = const Value.absent(),
     this.allowedPrices = const Value.absent(),
+    this.maxDebtLimit = const Value.absent(),
     this.isActive = const Value.absent(),
     this.serverVersion = const Value.absent(),
     required DateTime createdAt,
@@ -17596,6 +17641,7 @@ class RepresentativesCompanion extends UpdateCompanion<Representative> {
     Expression<String>? locationLink,
     Expression<double>? commissionPercentage,
     Expression<String>? allowedPrices,
+    Expression<double>? maxDebtLimit,
     Expression<bool>? isActive,
     Expression<int>? serverVersion,
     Expression<DateTime>? createdAt,
@@ -17616,6 +17662,7 @@ class RepresentativesCompanion extends UpdateCompanion<Representative> {
       if (commissionPercentage != null)
         'commission_percentage': commissionPercentage,
       if (allowedPrices != null) 'allowed_prices': allowedPrices,
+      if (maxDebtLimit != null) 'max_debt_limit': maxDebtLimit,
       if (isActive != null) 'is_active': isActive,
       if (serverVersion != null) 'server_version': serverVersion,
       if (createdAt != null) 'created_at': createdAt,
@@ -17637,6 +17684,7 @@ class RepresentativesCompanion extends UpdateCompanion<Representative> {
     Value<String?>? locationLink,
     Value<double>? commissionPercentage,
     Value<String>? allowedPrices,
+    Value<double>? maxDebtLimit,
     Value<bool>? isActive,
     Value<int>? serverVersion,
     Value<DateTime>? createdAt,
@@ -17656,6 +17704,7 @@ class RepresentativesCompanion extends UpdateCompanion<Representative> {
       locationLink: locationLink ?? this.locationLink,
       commissionPercentage: commissionPercentage ?? this.commissionPercentage,
       allowedPrices: allowedPrices ?? this.allowedPrices,
+      maxDebtLimit: maxDebtLimit ?? this.maxDebtLimit,
       isActive: isActive ?? this.isActive,
       serverVersion: serverVersion ?? this.serverVersion,
       createdAt: createdAt ?? this.createdAt,
@@ -17703,6 +17752,9 @@ class RepresentativesCompanion extends UpdateCompanion<Representative> {
     if (allowedPrices.present) {
       map['allowed_prices'] = Variable<String>(allowedPrices.value);
     }
+    if (maxDebtLimit.present) {
+      map['max_debt_limit'] = Variable<double>(maxDebtLimit.value);
+    }
     if (isActive.present) {
       map['is_active'] = Variable<bool>(isActive.value);
     }
@@ -17738,6 +17790,7 @@ class RepresentativesCompanion extends UpdateCompanion<Representative> {
           ..write('locationLink: $locationLink, ')
           ..write('commissionPercentage: $commissionPercentage, ')
           ..write('allowedPrices: $allowedPrices, ')
+          ..write('maxDebtLimit: $maxDebtLimit, ')
           ..write('isActive: $isActive, ')
           ..write('serverVersion: $serverVersion, ')
           ..write('createdAt: $createdAt, ')
@@ -29887,6 +29940,7 @@ typedef $$RepresentativesTableCreateCompanionBuilder =
       Value<String?> locationLink,
       Value<double> commissionPercentage,
       Value<String> allowedPrices,
+      Value<double> maxDebtLimit,
       Value<bool> isActive,
       Value<int> serverVersion,
       required DateTime createdAt,
@@ -29907,6 +29961,7 @@ typedef $$RepresentativesTableUpdateCompanionBuilder =
       Value<String?> locationLink,
       Value<double> commissionPercentage,
       Value<String> allowedPrices,
+      Value<double> maxDebtLimit,
       Value<bool> isActive,
       Value<int> serverVersion,
       Value<DateTime> createdAt,
@@ -29976,6 +30031,11 @@ class $$RepresentativesTableFilterComposer
 
   ColumnFilters<String> get allowedPrices => $composableBuilder(
     column: $table.allowedPrices,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get maxDebtLimit => $composableBuilder(
+    column: $table.maxDebtLimit,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -30069,6 +30129,11 @@ class $$RepresentativesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get maxDebtLimit => $composableBuilder(
+    column: $table.maxDebtLimit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isActive => $composableBuilder(
     column: $table.isActive,
     builder: (column) => ColumnOrderings(column),
@@ -30149,6 +30214,11 @@ class $$RepresentativesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<double> get maxDebtLimit => $composableBuilder(
+    column: $table.maxDebtLimit,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
 
@@ -30215,6 +30285,7 @@ class $$RepresentativesTableTableManager
                 Value<String?> locationLink = const Value.absent(),
                 Value<double> commissionPercentage = const Value.absent(),
                 Value<String> allowedPrices = const Value.absent(),
+                Value<double> maxDebtLimit = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<int> serverVersion = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -30233,6 +30304,7 @@ class $$RepresentativesTableTableManager
                 locationLink: locationLink,
                 commissionPercentage: commissionPercentage,
                 allowedPrices: allowedPrices,
+                maxDebtLimit: maxDebtLimit,
                 isActive: isActive,
                 serverVersion: serverVersion,
                 createdAt: createdAt,
@@ -30253,6 +30325,7 @@ class $$RepresentativesTableTableManager
                 Value<String?> locationLink = const Value.absent(),
                 Value<double> commissionPercentage = const Value.absent(),
                 Value<String> allowedPrices = const Value.absent(),
+                Value<double> maxDebtLimit = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<int> serverVersion = const Value.absent(),
                 required DateTime createdAt,
@@ -30271,6 +30344,7 @@ class $$RepresentativesTableTableManager
                 locationLink: locationLink,
                 commissionPercentage: commissionPercentage,
                 allowedPrices: allowedPrices,
+                maxDebtLimit: maxDebtLimit,
                 isActive: isActive,
                 serverVersion: serverVersion,
                 createdAt: createdAt,

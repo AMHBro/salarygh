@@ -6,10 +6,14 @@ import '../network/api_client.dart';
 import 'floor_store.dart';
 
 class FloorGuard {
+  static const _cloudRequired =
+      'آخر كمية تحتاج تأكيد السحابة. البيع متوقف حتى يتأكد الحجز.';
+
   static Future<String?> reserve({
     required String localVariantId,
     required String localWarehouseId,
     required double pieces,
+    bool requireCloud = false,
   }) async {
     final database = AppServices.database;
     final apiClient = AppServices.apiClient;
@@ -24,13 +28,13 @@ class FloorGuard {
 
     final online = await connectivity.hasConnection;
     if (!online) {
-      return null;
+      return requireCloud ? _cloudRequired : null;
     }
 
     final serverVariantId = await _serverVariantId(database, localVariantId);
     final serverWarehouseId = await _serverWarehouseId(database, localWarehouseId);
     if (serverVariantId == null || serverWarehouseId == null) {
-      return null;
+      return requireCloud ? _cloudRequired : null;
     }
 
     final deviceId = await FloorStore.deviceId(database);
@@ -48,7 +52,7 @@ class FloorGuard {
       return null;
     } on DioException catch (error) {
       if (error.response == null) {
-        return null;
+        return requireCloud ? _cloudRequired : null;
       }
       final data = error.response?.data;
       if (data is Map) {
@@ -59,7 +63,7 @@ class FloorGuard {
       }
       return 'السيرفر رفض الكمية. راجع توفر المادة.';
     } catch (_) {
-      return null;
+      return requireCloud ? _cloudRequired : null;
     }
   }
 

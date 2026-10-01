@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 
@@ -9,6 +11,7 @@ import '../../settings/data/company_settings_repository.dart';
 import '../../products/models/unit_model.dart';
 import '../../suppliers/models/supplier_model.dart';
 import '../../warehouses/models/warehouse_model.dart';
+import '../data/supplier_folder.dart';
 import '../models/purchase_model.dart';
 import 'widgets/purchase_excel_grid.dart';
 
@@ -33,15 +36,17 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
 
   List<UnitModel> _units = [];
   List<SupplierModel> _suppliers = [];
-  SupplierModel? _pinnedSupplier;
   int _supplierPage = 1;
-  int _supplierTotal = 0;
   List<WarehouseModel> _warehouses = [];
 
   final List<PurchaseItemModel> _items = [];
 
   String? _selectedSupplierId;
   String? _selectedWarehouseId;
+  final TextEditingController _supplierNameController = TextEditingController();
+  final FocusNode _supplierFocus = FocusNode();
+  final MenuController _supplierMenuController = MenuController();
+  Timer? _supplierSearchTimer;
   bool _warehouseLocked = false;
 
   PurchasePaymentType _paymentType = PurchasePaymentType.cash;
@@ -129,8 +134,57 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     _porterageController.dispose();
     _paidController.dispose();
     _notesController.dispose();
+    _supplierSearchTimer?.cancel();
+    _supplierFocus.dispose();
+    _supplierNameController.dispose();
 
     super.dispose();
+  }
+
+  void _onSupplierTyped(String value) {
+    if (_selectedSupplierId != null) {
+      for (final supplier in _suppliers) {
+        if (supplier.id == _selectedSupplierId && supplier.name == value) {
+          return;
+        }
+      }
+    }
+    _selectedSupplierId = null;
+    _supplierSearchTimer?.cancel();
+    _supplierSearchTimer = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _supplierPage = 1;
+      });
+      _loadSupplierPage();
+    });
+  }
+
+  Future<String> _resolveSupplierId() async {
+    final name = _supplierNameController.text.trim();
+    if (name.isEmpty) {
+      throw StateError('اكتب اسم المورد.');
+    }
+    if (_selectedSupplierId != null) {
+      for (final supplier in _suppliers) {
+        if (supplier.id == _selectedSupplierId && supplier.name.trim() == name) {
+          return supplier.id;
+        }
+      }
+    }
+    final page = await _suppliersRepository.pageSuppliers(
+      search: name,
+      limit: 50,
+    );
+    for (final supplier in page.items) {
+      if (supplier.name.trim() == name) {
+        return supplier.id;
+      }
+    }
+    final created = await _suppliersRepository.createSupplier(name: name);
+    return created.id;
   }
 
   // ===========================================================================
@@ -175,6 +229,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       final page = await _suppliersRepository.pageSuppliers(
         limit: kListPageSize,
         offset: (_supplierPage - 1) * kListPageSize,
+        search: _supplierNameController.text.trim(),
       );
       if (!mounted) {
         return;
@@ -183,8 +238,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
         _suppliers = page.items
             .where((supplier) => supplier.isActive && supplier.deletedAt == null)
             .toList();
-        _supplierTotal = page.total;
       });
+      _reopenSupplierMenu();
     } catch (error) {
       if (!mounted) {
         return;
@@ -205,6 +260,7 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
         _suppliersRepository.pageSuppliers(
           limit: kListPageSize,
           offset: (_supplierPage - 1) * kListPageSize,
+          search: _supplierNameController.text.trim(),
         ),
         _warehousesRepository.getWarehouses(),
       ]);
@@ -239,20 +295,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
 
       setState(() {
         _suppliers = activeSuppliers;
-        _supplierTotal = supplierPage.total;
         _warehouses = activeWarehouses;
         _warehouseLocked = warehouseLocked;
-
-        if (_selectedSupplierId == null) {
-          _selectedSupplierId =
-          _suppliers.isEmpty ? null : _suppliers.first.id;
-        }
-        for (final supplier in _suppliers) {
-          if (supplier.id == _selectedSupplierId) {
-            _pinnedSupplier = supplier;
-            break;
-          }
-        }
 
         if (_selectedWarehouseId == null ||
             !_warehouses.any(
@@ -739,22 +783,13 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
   }
 
   Widget _buildDesktopInvoiceData() {
-    return Row(
+    return Column(
+      children: [
+        _buildSupplierField(),
+        const SizedBox(height: 12),
+        Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // =====================================================================
-        // SUPPLIER
-        // =====================================================================
-
-        Expanded(
-          flex: 5,
-          child: _buildSupplierField(),
-        ),
-
-        const SizedBox(
-          width: 12,
-        ),
-
         // =====================================================================
         // WAREHOUSE
         // =====================================================================
@@ -836,25 +871,19 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
           child: _buildPaymentTypeField(),
         ),
       ],
+        ),
+      ],
     );
   }
 
   Widget _buildCompactInvoiceData() {
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _buildSupplierField(),
-            ),
-            const SizedBox(
-              width: 12,
-            ),
-            Expanded(
-              child: _buildWarehouseField(),
-            ),
-          ],
+        _buildSupplierField(),
+        const SizedBox(
+          height: 12,
         ),
+        _buildWarehouseField(),
         const SizedBox(
           height: 14,
         ),
@@ -914,13 +943,45 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     );
   }
 
+  void _selectSupplier(SupplierModel supplier) {
+    _selectedSupplierId = supplier.id;
+    _supplierNameController.value = TextEditingValue(
+      text: supplier.name,
+      selection: TextSelection.collapsed(offset: supplier.name.length),
+    );
+    setState(() {});
+  }
+
+  void _reopenSupplierMenu() {
+    if (!_supplierMenuController.isOpen || !mounted) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_supplierFocus.hasFocus) {
+        return;
+      }
+      if (_supplierMenuController.isOpen) {
+        _supplierMenuController.close();
+      }
+      _supplierMenuController.open();
+    });
+  }
+
+  Future<void> _openSupplierFolder() {
+    return showSupplierFolderDialog(
+      context,
+      _supplierNameController.text,
+    );
+  }
+
   // ===========================================================================
   // SUPPLIER
   // ===========================================================================
 
   Widget _buildSupplierField() {
+    final names = _suppliers.take(12).toList();
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
           'المورد',
@@ -932,78 +993,73 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
         const SizedBox(
           height: 6,
         ),
-        if (_suppliers.isEmpty && _pinnedSupplier == null)
-          Container(
-            width: double.infinity,
-            height: 46,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-            ),
-            alignment: Alignment.centerRight,
-            decoration: BoxDecoration(
-              color: const Color(
-                0xFFFFF4E5,
-              ),
-              borderRadius: BorderRadius.circular(
-                10,
-              ),
-            ),
-            child: const Text(
-              'لا يوجد موردون',
-              style: TextStyle(
-                fontSize: 11,
-              ),
-            ),
-          )
-        else
-          DropdownButtonFormField<String>(
-            value: _selectedSupplierId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              hintText: 'اختر المورد',
-              isDense: true,
-            ),
-            items: [
-              for (final supplier in [
-                if (_pinnedSupplier != null &&
-                    !_suppliers.any((item) => item.id == _pinnedSupplier!.id))
-                  _pinnedSupplier!,
-                ..._suppliers,
-              ])
-                DropdownMenuItem<String>(
-                  value: supplier.id,
-                  child: Text(
-                    supplier.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                    ),
-                  ),
+        Row(
+          children: [
+            Expanded(
+              child: MenuAnchor(
+                controller: _supplierMenuController,
+                style: const MenuStyle(
+                  maximumSize: WidgetStatePropertyAll(Size(640, 280)),
                 ),
-            ],
-            onChanged: _saving
-                ? null
-                : (value) {
-              setState(() {
-                _selectedSupplierId = value;
-                for (final supplier in _suppliers) {
-                  if (supplier.id == value) {
-                    _pinnedSupplier = supplier;
-                    break;
-                  }
-                }
-              });
-            },
-          ),
-        ListPagination(
-          page: _supplierPage,
-          totalItems: _supplierTotal,
-          onPageChanged: (page) {
-            setState(() {
-              _supplierPage = page;
-            });
-            _loadSupplierPage();
-          },
+                alignmentOffset: const Offset(0, 6),
+                menuChildren: [
+                  if (names.isEmpty)
+                    const MenuItemButton(
+                      child: Text('لا يوجد مورد بهذا الاسم. اكتب الاسم كاملاً لحفظه.'),
+                    )
+                  else
+                    for (final supplier in names)
+                      MenuItemButton(
+                        onPressed: () => _selectSupplier(supplier),
+                        child: SizedBox(
+                          width: 420,
+                          child: Text(
+                            supplier.name,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryTextColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                ],
+                builder: (context, controller, child) {
+                  return TextField(
+                    controller: _supplierNameController,
+                    focusNode: _supplierFocus,
+                    enabled: !_saving,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryTextColor,
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: 'اسم المورد',
+                    ),
+                    onTap: () {
+                      if (!controller.isOpen) {
+                        controller.open();
+                      }
+                    },
+                    onChanged: (value) {
+                      _onSupplierTyped(value);
+                      if (!controller.isOpen) {
+                        controller.open();
+                      }
+                    },
+                  );
+                },
+              ),
+            ),
+            IconButton(
+              tooltip: 'مجلد المورد',
+              onPressed: _saving ? null : _openSupplierFolder,
+              icon: const Icon(Icons.folder_open_rounded),
+            ),
+          ],
         ),
       ],
     );
@@ -1496,16 +1552,14 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
   // ===========================================================================
 
   Future<void> _completePurchase() async {
-    final supplierId = _selectedSupplierId;
-    final warehouseId = _selectedWarehouseId;
-
-    if (supplierId == null) {
-      _showMessage(
-        'اختر المورد.',
-      );
-
+    final String supplierId;
+    try {
+      supplierId = await _resolveSupplierId();
+    } catch (error) {
+      _showMessage(_errorMessage(error));
       return;
     }
+    final warehouseId = _selectedWarehouseId;
 
     if (warehouseId == null) {
       _showMessage(

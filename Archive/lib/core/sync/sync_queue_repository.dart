@@ -734,6 +734,14 @@ class SyncQueueRepository {
         continue;
       }
 
+      if (payload['action']?.toString() == 'enable') {
+        continue;
+      }
+
+      if (_clean(payload['name']) != null) {
+        continue;
+      }
+
       queueIdsToDelete.add(
         row.id,
       );

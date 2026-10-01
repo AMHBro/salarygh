@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
+import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { RejectRequestDto } from '../branches/dto/reject-request.dto';
 import { AssignKeepersDto } from './dto/assign-keepers.dto';
 import { org_status_enum, warehouse_type_enum } from '@prisma/client';
@@ -99,6 +100,23 @@ export class WarehousesService {
         return warehouse;
     }
 
+    async updateDetails(id: string, dto: UpdateWarehouseDto) {
+        await this.findOne(id);
+        const name = dto.name?.trim();
+        const code = dto.code?.trim();
+        return this.prisma.warehouses.update({
+            where: { id },
+            data: {
+                ...(name ? { name } : {}),
+                ...(code ? { code } : {}),
+                ...(dto.address !== undefined ? { address: dto.address } : {}),
+                ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+                ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
+                updated_at: new Date(),
+            },
+        });
+    }
+
     async submitForApproval(id: string) {
         const wh = await this.findOne(id);
         if (wh.status !== org_status_enum.DRAFT && wh.status !== org_status_enum.REJECTED) {
@@ -110,12 +128,13 @@ export class WarehousesService {
         });
     }
 
-    async approve(id: string, approverId: string) {
+    async approve(id: string, approverId: string, approverRole?: string | null) {
         const wh = await this.findOne(id);
         if (wh.status !== org_status_enum.PENDING_APPROVAL) {
             throw new BadRequestException('المخزن ليس في حالة انتظار الاعتماد');
         }
-        if (wh.created_by === approverId) {
+        const isSystemAdmin = (approverRole ?? '').trim().toUpperCase() === 'ADMIN';
+        if (!isSystemAdmin && wh.created_by === approverId) {
             throw new ForbiddenException('لا يمكنك اعتماد طلب قمت بإنشائه بنفسك');
         }
 
@@ -164,6 +183,36 @@ export class WarehousesService {
         return this.prisma.warehouses.update({
             where: { id },
             data: { status: org_status_enum.INACTIVE, updated_at: new Date() },
+        });
+    }
+
+    async enable(id: string) {
+        const wh = await this.findOne(id);
+
+        if (wh.status === org_status_enum.ACTIVE) {
+            const current = await this.prisma.warehouses.findUnique({ where: { id } });
+            if (!current) throw new NotFoundException('المخزن غير موجود');
+            return current;
+        }
+
+        if (wh.status !== org_status_enum.INACTIVE) {
+            throw new BadRequestException(
+                'يمكن فقط إعادة تفعيل المخزن الموقوف',
+            );
+        }
+
+        if (wh.type === warehouse_type_enum.SUB) {
+            const parent = wh.parent_warehouse;
+            if (!parent || parent.status !== org_status_enum.ACTIVE) {
+                throw new BadRequestException(
+                    'لا يمكن تفعيل مخزن فرعي تابع لمخزن أب غير نشط',
+                );
+            }
+        }
+
+        return this.prisma.warehouses.update({
+            where: { id },
+            data: { status: org_status_enum.ACTIVE, updated_at: new Date() },
         });
     }
 

@@ -1,11 +1,10 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:sales_system/core/network/server_endpoint.dart';
 import 'package:sales_system/core/sync/sync_failure.dart';
+
+import 'store_outbox.dart';
 
 class AliraStoreLine {
   final String variantId;
@@ -21,7 +20,6 @@ class AliraStoreLine {
 
 class AliraStoreOrders {
   static bool lastQueued = false;
-  static Directory? queueDirectoryOverride;
 
   static final Dio _dio = Dio(
     BaseOptions(
@@ -32,7 +30,7 @@ class AliraStoreOrders {
   );
 
   static Future<void> _useActiveServer() async {
-    _dio.options.baseUrl = await ServerEndpoint.instance.activeBaseUrl();
+    _dio.options.baseUrl = await ServerEndpoint.instance.publicBaseUrl();
   }
 
   static Future<String> guest({
@@ -67,6 +65,7 @@ class AliraStoreOrders {
     required String partyPhone,
     required String partyAddress,
     required String paymentType,
+    int? paidAmount,
     String? partyId,
     String? priceType,
     required List<AliraStoreLine> lines,
@@ -80,6 +79,7 @@ class AliraStoreOrders {
       'partyPhone': partyPhone,
       'partyAddress': partyAddress,
       'paymentType': paymentType,
+      'paidAmount': ?paidAmount,
       'partyId': partyId,
       'priceType': priceType,
       'lines': _lineMaps(lines),
@@ -92,6 +92,15 @@ class AliraStoreOrders {
       await _enqueue(payload);
       lastQueued = true;
       return '${payload['key']}';
+    }
+  }
+
+  static Future<int> pendingCount() async {
+    try {
+      final items = await _readQueue();
+      return items.where((item) => item['permanent'] != true).length;
+    } catch (_) {
+      return 0;
     }
   }
 
@@ -178,6 +187,7 @@ class AliraStoreOrders {
         'party_phone': payload['partyPhone'],
         'party_address': payload['partyAddress'],
         'payment_type': payload['paymentType'],
+        if (payload['paidAmount'] != null) 'paid_amount': payload['paidAmount'],
         if (priceType.isNotEmpty) 'price_type': priceType,
       },
       options: Options(headers: headers),
@@ -233,29 +243,10 @@ class AliraStoreOrders {
     }
   }
 
-  static Future<File> _queueFile() async {
-    final directory = queueDirectoryOverride ?? await getApplicationSupportDirectory();
-    if (!await directory.exists()) {
-      await directory.create(recursive: true);
-    }
-    return File('${directory.path}${Platform.pathSeparator}store_outbox.json');
-  }
+  static Future<List<Map<String, dynamic>>> _readQueue() => readStoreOutbox();
 
-  static Future<List<Map<String, dynamic>>> _readQueue() async {
-    final file = await _queueFile();
-    if (!await file.exists()) return [];
-    final raw = jsonDecode(await file.readAsString());
-    if (raw is! List) return [];
-    return [
-      for (final item in raw)
-        if (item is Map) Map<String, dynamic>.from(item),
-    ];
-  }
-
-  static Future<void> _writeQueue(List<Map<String, dynamic>> items) async {
-    final file = await _queueFile();
-    await file.writeAsString(jsonEncode(items));
-  }
+  static Future<void> _writeQueue(List<Map<String, dynamic>> items) =>
+      writeStoreOutbox(items);
 
   static Future<void> _enqueue(Map<String, dynamic> payload) async {
     final items = await _readQueue();

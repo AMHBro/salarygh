@@ -7,8 +7,12 @@ import '../../features/alira/data/alira_store_orders.dart';
 import '../database/app_database.dart';
 import '../floor/floor_store.dart';
 import '../floor/floor_sync.dart';
+import '../lan/lan_inbox.dart';
+import '../../features/ecommerce/data/cloud_store_orders.dart';
 import '../network/api_client.dart';
 import 'connectivity_service.dart';
+import 'store_catalog_publisher.dart';
+import 'supplier_sheet_sink.dart';
 import 'sync_failure.dart';
 import 'sync_queue_repository.dart';
 import 'sync_remote_gateway.dart';
@@ -28,6 +32,8 @@ class SyncService {
   bool _started = false;
   bool _followUp = false;
   bool _followUpPull = false;
+  bool _pullingImages = false;
+  bool _pullingSheets = false;
 
   SyncService({
     required this.database,
@@ -120,6 +126,9 @@ class SyncService {
               connectivity: connectivityService,
             ),
           );
+          unawaited(
+            LanInbox.drain(database),
+          );
         },
       );
     }
@@ -136,6 +145,12 @@ class SyncService {
             source: 'timer',
             pullServerChanges: false,
           ),
+        );
+        unawaited(
+          _pullProductImages(),
+        );
+        unawaited(
+          _pullSupplierSheets(),
         );
       },
     );
@@ -157,6 +172,12 @@ class SyncService {
           source: 'startup',
           pullServerChanges: true,
         );
+        unawaited(
+          _pullProductImages(),
+        );
+        unawaited(
+          _pullSupplierSheets(),
+        );
       }
     } catch (error, stackTrace) {
       debugPrint(
@@ -172,6 +193,188 @@ class SyncService {
 
     debugPrint('[SYNC] SyncService started.');
     debugPrint('[SYNC] ========================================');
+  }
+
+  Future<void> _pullProductImages() async {
+    final client = apiClient;
+    if (client == null || kIsWeb || _pullingImages) {
+      return;
+    }
+    _pullingImages = true;
+    try {
+      var page = 1;
+      var totalPages = 1;
+      do {
+        final response = await client.get(
+          '/products/images',
+          queryParameters: {
+            'page': page,
+          },
+        );
+        final root = response.data;
+        if (root is! Map) {
+          return;
+        }
+        final meta = root['meta'];
+        if (meta is Map) {
+          totalPages = int.tryParse('${meta['totalPages']}') ?? 1;
+        }
+        final rows = root['data'];
+        if (rows is! List) {
+          return;
+        }
+        for (final raw in rows) {
+          if (raw is! Map) {
+            continue;
+          }
+          final serverId = '${raw['id'] ?? ''}'.trim();
+          final image = '${raw['image_url'] ?? ''}'.trim();
+          if (serverId.isEmpty || !_usableProductImage(image)) {
+            continue;
+          }
+          await _saveProductImage(
+            serverId: serverId,
+            image: image,
+            barcode: '${raw['barcode'] ?? ''}'.trim(),
+            sku: '${raw['sku'] ?? ''}'.trim(),
+          );
+        }
+        page += 1;
+      } while (page <= totalPages && page <= 20);
+    } catch (error) {
+      debugPrint('[SYNC] product images: $error');
+    } finally {
+      _pullingImages = false;
+    }
+  }
+
+  Future<void> _pullSupplierSheets() async {
+    final client = apiClient;
+    if (client == null || kIsWeb || _pullingSheets) {
+      return;
+    }
+    _pullingSheets = true;
+    try {
+      var page = 1;
+      var totalPages = 1;
+      do {
+        final response = await client.get(
+          '/suppliers/sheets',
+          queryParameters: {
+            'page': page,
+          },
+        );
+        final root = response.data;
+        if (root is! Map) {
+          return;
+        }
+        final meta = root['meta'];
+        if (meta is Map) {
+          totalPages = int.tryParse('${meta['totalPages']}') ?? 1;
+        }
+        final rows = root['data'];
+        if (rows is! List || rows.isEmpty) {
+          return;
+        }
+        for (final raw in rows) {
+          if (raw is! Map) {
+            continue;
+          }
+          final sheetId = '${raw['id'] ?? ''}'.trim();
+          final name = '${raw['supplier_name'] ?? ''}'.trim();
+          final title = '${raw['title'] ?? ''}'.trim();
+          final image = '${raw['image_url'] ?? ''}'.trim();
+          if (sheetId.isEmpty || name.isEmpty || !_usableProductImage(image)) {
+            continue;
+          }
+          final savedAt = DateTime.tryParse('${raw['created_at'] ?? ''}') ??
+              DateTime.now();
+          await saveSupplierSheet(
+            sheetId: sheetId,
+            supplierName: name,
+            title: title.isEmpty ? 'صورة' : title,
+            imageUrl: image,
+            savedAt: savedAt.toLocal(),
+          );
+        }
+        page += 1;
+      } while (page <= totalPages && page <= 8);
+    } catch (error) {
+      debugPrint('[SYNC] supplier sheets: $error');
+    } finally {
+      _pullingSheets = false;
+    }
+  }
+
+  bool _usableProductImage(String image) {
+    if (image.startsWith('data:image/')) {
+      return image.length <= 1500000;
+    }
+    final uri = Uri.tryParse(image);
+    return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
+  }
+
+  Future<void> _saveProductImage({
+    required String serverId,
+    required String image,
+    required String barcode,
+    required String sku,
+  }) async {
+    final byServer = await (database.select(database.products)
+          ..where((table) => table.serverId.equals(serverId)))
+        .getSingleOrNull();
+    if (byServer != null) {
+      await _writeImage(byServer.id, image);
+      return;
+    }
+
+    final link = await database.customSelect(
+      '''
+SELECT local_product_id
+FROM store_catalog_links
+WHERE remote_product_id = ?
+''',
+      variables: [Variable.withString(serverId)],
+    ).getSingleOrNull();
+    final linkedId = link?.data['local_product_id']?.toString().trim() ?? '';
+    if (linkedId.isNotEmpty) {
+      await _writeImage(linkedId, image);
+      return;
+    }
+
+    if (barcode.isNotEmpty) {
+      final rows = await (database.select(database.products)
+            ..where(
+              (table) =>
+                  table.barcode.equals(barcode) & table.deletedAt.isNull(),
+            ))
+          .get();
+      if (rows.length == 1 && (rows.first.serverId ?? '').trim().isEmpty) {
+        await _writeImage(rows.first.id, image);
+        return;
+      }
+    }
+
+    if (sku.isNotEmpty) {
+      final rows = await (database.select(database.products)
+            ..where(
+              (table) => table.sku.equals(sku) & table.deletedAt.isNull(),
+            ))
+          .get();
+      if (rows.length == 1 && (rows.first.serverId ?? '').trim().isEmpty) {
+        await _writeImage(rows.first.id, image);
+      }
+    }
+  }
+
+  Future<void> _writeImage(String localId, String image) {
+    return (database.update(database.products)
+          ..where((table) => table.id.equals(localId)))
+        .write(
+      ProductsCompanion(
+        imageUrl: Value(image),
+      ),
+    );
   }
 
   // ===========================================================================
@@ -363,6 +566,12 @@ class SyncService {
         );
       }
 
+      if (pullServerChanges) {
+        await StoreCatalogPublisher(database).publish();
+      }
+
+      await CloudStoreOrders(database).pull();
+
       debugPrint(
         '[SYNC] Synchronization completed.',
       );
@@ -541,7 +750,10 @@ class SyncService {
           '[SYNC] Operation synced and removed from Outbox.',
         );
       } catch (error, stackTrace) {
-        failedCount++;
+        final deferred = error.toString().toLowerCase().contains('sync_defer');
+        if (!deferred) {
+          failedCount++;
+        }
 
         debugPrint(
           '[SYNC] !!! PUSH FAILED !!!',
@@ -577,6 +789,21 @@ class SyncService {
 
         try {
           final message = error.toString();
+          if (message.contains('SYNC_REJECTED')) {
+            await FloorStore.noteSyncRejection(
+              database,
+              saleId: operation.entityId,
+              message: message,
+            );
+            await queueRepository.markFailed(
+              queueId: operation.id,
+              error: 'SYNC_REJECTED $message',
+            );
+            debugPrint(
+              '[SYNC] Invoice rejected by credit revalidation.',
+            );
+            continue;
+          }
           final conflict = message.contains('409') ||
               message.contains('SYNC_CONFLICT');
           if (!conflict && isTransientSyncFailure(error)) {
@@ -585,7 +812,9 @@ class SyncService {
               error: message,
             );
             debugPrint(
-              '[SYNC] Server unreachable. Operation stays pending.',
+              deferred
+                  ? '[SYNC] Deferred until its dependency reaches the server. Pull can continue.'
+                  : '[SYNC] Server unreachable. Operation stays pending.',
             );
           } else {
             if (operation.entityType == 'direct_sale' &&

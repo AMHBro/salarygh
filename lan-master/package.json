@@ -1,0 +1,8 @@
+{
+  "name": "sayler-lan-master",
+  "private": true,
+  "description": "Serial LAN queue for the master office SQLite file.",
+  "scripts": {
+    "start": "node src/server.js"
+  }
+}

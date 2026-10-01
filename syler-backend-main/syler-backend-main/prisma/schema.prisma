@@ -453,6 +453,7 @@ model representatives {
   office_phone       String?              @db.VarChar(50)
   paid_commission    Decimal              @default(0) @db.Decimal(15, 2)
   allowed_prices     String               @default("wholesale,representative,retail") @db.VarChar(200)
+  max_debt_limit     Decimal              @default(0) @db.Decimal(15, 2)
   customers          customers[]
   ecommerce_orders   ecommerce_orders[]
   rep_custody_orders rep_custody_orders[]
@@ -641,9 +642,22 @@ model suppliers {
   created_by        String?             @db.Uuid
   payment_vouchers  payment_vouchers[]
   purchase_invoices purchase_invoices[]
+  supplier_sheets   supplier_sheets[]
   creator           users?              @relation(fields: [created_by], references: [id])
 
   @@index([name])
+}
+
+model supplier_sheets {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  supplier_id String    @db.Uuid
+  title       String    @db.VarChar(200)
+  image_url   String
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  supplier    suppliers @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+
+  @@index([supplier_id])
+  @@index([created_at])
 }
 
 model sym_channel {
@@ -1881,6 +1895,7 @@ model ecommerce_orders {
   subtotal            Decimal                     @default(0) @db.Decimal(15, 2)
   discount_amount     Decimal                     @default(0) @db.Decimal(15, 2)
   total               Decimal                     @default(0) @db.Decimal(15, 2)
+  paid_amount         Decimal                     @default(0) @db.Decimal(15, 2)
   submitted_at        DateTime                    @default(now()) @db.Timestamptz(6)
   accepted_at         DateTime?                   @db.Timestamptz(6)
   accepted_by         String?                     @db.Uuid

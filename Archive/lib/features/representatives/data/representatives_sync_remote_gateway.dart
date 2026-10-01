@@ -466,6 +466,11 @@ class RepresentativesSyncRemoteGateway
             serverData['commission_rate'],
           ),
         ),
+        maxDebtLimit: Value(
+          _doubleOrZero(
+            serverData['max_debt_limit'],
+          ),
+        ),
         isActive: Value(
           _remoteIsActive(
             serverData,
@@ -649,6 +654,17 @@ class RepresentativesSyncRemoteGateway
           ),
         )
             : const Value.absent(),
+        maxDebtLimit:
+        serverData.containsKey(
+          'max_debt_limit',
+        )
+            ? Value(
+          _doubleOrZero(
+            serverData[
+            'max_debt_limit'],
+          ),
+        )
+            : const Value.absent(),
         isActive:
         serverData.containsKey(
           'is_active',
@@ -746,6 +762,8 @@ class RepresentativesSyncRemoteGateway
       representative.commissionPercentage,
       'allowed_prices':
       representative.allowedPrices,
+      'max_debt_limit':
+      representative.maxDebtLimit,
     };
 
     _putOptionalString(
@@ -788,6 +806,8 @@ class RepresentativesSyncRemoteGateway
       representative.commissionPercentage,
       'allowed_prices':
       representative.allowedPrices,
+      'max_debt_limit':
+      representative.maxDebtLimit,
     };
 
     _putOptionalString(

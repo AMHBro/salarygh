@@ -6,6 +6,7 @@ import '../../../core/di/app_services.dart';
 import '../../../core/paging/list_page.dart';
 import '../../../core/money/party_balance.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../purchases/data/supplier_folder.dart';
 import '../models/supplier_model.dart';
 
 class SuppliersScreen extends StatefulWidget {
@@ -537,6 +538,16 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
               ),
             ),
           ),
+          IconButton(
+            tooltip: 'مجلد المورد',
+            onPressed: () => showSupplierFolderDialog(
+              context,
+              supplier.name,
+            ),
+            icon: const Icon(
+              Icons.folder_open_rounded,
+            ),
+          ),
           SizedBox(
             width: 50,
             child:
@@ -547,6 +558,13 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
               ),
               onSelected: (value) {
                 switch (value) {
+                  case 'folder':
+                    showSupplierFolderDialog(
+                      context,
+                      supplier.name,
+                    );
+                    break;
+
                   case 'details':
                     _showSupplierDetails(
                       supplier,
@@ -568,6 +586,23 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
               },
               itemBuilder: (context) {
                 return [
+                  const PopupMenuItem(
+                    value: 'folder',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.folder_open_rounded,
+                          size: 17,
+                        ),
+                        SizedBox(
+                          width: 8,
+                        ),
+                        Text(
+                          'مجلد المورد',
+                        ),
+                      ],
+                    ),
+                  ),
                   const PopupMenuItem(
                     value: 'details',
                     child: Row(
@@ -814,7 +849,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                           );
                         }
 
-                        if (!mounted) {
+                        if (!dialogContext.mounted) {
                           return;
                         }
 
@@ -1140,7 +1175,7 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                               .text,
                         );
 
-                        if (!mounted) {
+                        if (!dialogContext.mounted) {
                           return;
                         }
 
@@ -1513,6 +1548,9 @@ class _SupplierTableHeader
               'آخر شراء',
               style: style,
             ),
+          ),
+          SizedBox(
+            width: 48,
           ),
           SizedBox(
             width: 50,

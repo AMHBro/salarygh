@@ -33,6 +33,12 @@ class AuthStorage {
   static const _stationWarehouseKey =
       'station_warehouse_id';
 
+  static const _publicAccessTokenKey =
+      'public_access_token';
+
+  static const _publicRefreshTokenKey =
+      'public_refresh_token';
+
   Future<void> saveSession(
       AuthSession session,
       ) async {
@@ -195,6 +201,35 @@ class AuthStorage {
     );
   }
 
+  Future<void> savePublicSession({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    await _storage.write(
+      key: _publicAccessTokenKey,
+      value: accessToken,
+    );
+    if (refreshToken.trim().isEmpty) {
+      return;
+    }
+    await _storage.write(
+      key: _publicRefreshTokenKey,
+      value: refreshToken,
+    );
+  }
+
+  Future<String?> readPublicAccessToken() {
+    return _storage.read(
+      key: _publicAccessTokenKey,
+    );
+  }
+
+  Future<String?> readPublicRefreshToken() {
+    return _storage.read(
+      key: _publicRefreshTokenKey,
+    );
+  }
+
   Future<void> clearBranchId() async {
     await _storage.delete(
       key: _branchIdKey,
@@ -223,6 +258,12 @@ class AuthStorage {
       ),
       _storage.delete(
         key: _branchIdKey,
+      ),
+      _storage.delete(
+        key: _publicAccessTokenKey,
+      ),
+      _storage.delete(
+        key: _publicRefreshTokenKey,
       ),
     ]);
   }

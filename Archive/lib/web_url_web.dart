@@ -5,8 +5,16 @@ void configureAppUrl() {
 }
 
 String startRoute() {
-  final path = Uri.base.path;
-  if (path.endsWith('/shop')) return '/shop';
-  if (path.endsWith('/agent')) return '/agent';
+  final uri = Uri.base;
+  final path = uri.path;
+  final fragment = uri.fragment;
+  if (path.endsWith('/shop') || fragment.endsWith('/shop')) return '/shop';
+  if (path.endsWith('/agent') || fragment.endsWith('/agent')) return '/agent';
+  if (path.endsWith('/photos') || fragment.endsWith('/photos')) {
+    return '/photos';
+  }
+  if (path.endsWith('/follow') || fragment.endsWith('/follow')) {
+    return '/follow';
+  }
   return '/';
 }

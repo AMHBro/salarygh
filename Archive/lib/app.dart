@@ -1,12 +1,18 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'core/di/app_services.dart';
+import 'core/network/server_endpoint.dart';
 import 'core/theme/app_theme.dart';
 import 'core/training_mode.dart';
 import 'features/alira/presentation/agent_app.dart';
+import 'features/alira/presentation/manager_desk.dart';
+import 'features/alira/presentation/photo_desk_stub.dart'
+    if (dart.library.html) 'features/alira/presentation/photo_desk.dart';
 import 'features/alira/presentation/shop_app.dart';
+import 'features/alira/presentation/web_home.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/dashboard/presentation/desktop_shell.dart';
 import 'web_url.dart';
@@ -33,6 +39,12 @@ class SalesApp extends StatelessWidget {
           page = const AliraShopApp();
         } else if (name == '/agent') {
           page = const AliraAgentApp();
+        } else if (kIsWeb && name == '/photos') {
+          page = const PhotoDeskPage();
+        } else if (kIsWeb && name == '/follow') {
+          page = const ManagerDeskPage();
+        } else if (kIsWeb) {
+          page = const WebHome();
         } else {
           page = const _AuthGate();
         }
@@ -91,9 +103,11 @@ class _AuthGateState extends State<_AuthGate> {
         return;
       }
 
-      final session = await AppServices.authRepository.currentSession();
+      await ServerEndpoint.instance.ensurePublicOffice();
 
-      final hasSession = session != null;
+      final hasSession = await AppServices
+          .authRepository
+          .activeServerAcceptsSession();
 
       debugPrint(
         '[AUTH GATE] Saved session exists: $hasSession',

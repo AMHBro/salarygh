@@ -1042,7 +1042,7 @@ class _CustomersScreenState
                           );
                         }
 
-                        if (!mounted) {
+                        if (!dialogContext.mounted) {
                           return;
                         }
 
@@ -1617,7 +1617,7 @@ class _CustomersScreenState
                               .text,
                         );
 
-                        if (!mounted) {
+                        if (!dialogContext.mounted) {
                           return;
                         }
 

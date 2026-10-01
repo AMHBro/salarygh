@@ -19,6 +19,7 @@ import {
 import {
     SalesTransactionService,
 } from '../../direct-sales/sales-transaction.service';
+import { FloorService } from '../../floor/floor.service';
 
 @Injectable()
 export class OrderApprovalService {
@@ -28,6 +29,8 @@ export class OrderApprovalService {
 
         private readonly salesTransactionService:
             SalesTransactionService,
+
+        private readonly floor: FloorService,
     ) { }
 
     /**
@@ -478,6 +481,8 @@ export class OrderApprovalService {
                     });
                 }
 
+                await this.floor.releaseOrder(tx, order.id);
+
                 const updated =
                     await tx.ecommerce_orders.findUnique({
                         where: {
@@ -788,6 +793,7 @@ export class OrderApprovalService {
         warehouseId: string,
         paidAmount?: number,
     ) {
+        await this.floor.ensureSchema();
         return this.prisma.$transaction(
             async (
                 tx,
@@ -990,6 +996,20 @@ export class OrderApprovalService {
                         undefined ||
                         paidAmount ===
                         null
+                    ) &&
+                    Number(order.paid_amount ?? 0) > 0
+                ) {
+                    paidAmount = Number(order.paid_amount);
+                }
+
+                if (
+                    order.payment_type ===
+                    sales_payment_enum.PARTIAL &&
+                    (
+                        paidAmount ===
+                        undefined ||
+                        paidAmount ===
+                        null
                     )
                 ) {
                     throw new BadRequestException({
@@ -1081,6 +1101,15 @@ export class OrderApprovalService {
                  * - تحدث Customer Balance
                  */
 
+                await this.floor.releaseOrder(tx, order.id);
+
+                const fulfillmentWarehouseId =
+                    await this.pickWarehouseWithStock(
+                        tx,
+                        warehouseId,
+                        order.items,
+                    );
+
                 const sale =
                     await this.salesTransactionService.createSale(
                         tx,
@@ -1097,7 +1126,7 @@ export class OrderApprovalService {
                                     : null,
 
                             warehouse_id:
-                                warehouseId,
+                                fulfillmentWarehouseId,
 
                             price_type:
                                 priceType,
@@ -1181,9 +1210,10 @@ export class OrderApprovalService {
                     );
 
                 if (
-                    !invoiceTotal.eq(
-                        orderTotal,
-                    )
+                    invoiceTotal
+                        .sub(orderTotal)
+                        .abs()
+                        .gt(new Prisma.Decimal('0.01'))
                 ) {
                     throw new ConflictException({
                         code:
@@ -1280,7 +1310,7 @@ export class OrderApprovalService {
                             invoice.invoice_number,
 
                         warehouse_id:
-                            warehouseId,
+                            fulfillmentWarehouseId,
 
                         source:
                             order.source,
@@ -1334,6 +1364,76 @@ export class OrderApprovalService {
                     15000,
             },
         );
+    }
+
+    /**
+     * المخزن المختار أولاً. إذا الكمية فيه لا تكفي يُستخدم مخزن فعّال فيه الكمية.
+     */
+    private async pickWarehouseWithStock(
+        tx: Prisma.TransactionClient,
+        preferredWarehouseId: string,
+        items: Array<{
+            variant_id: string;
+            unit_id: string;
+            quantity: Prisma.Decimal | number | string;
+            product_name?: string | null;
+        }>,
+    ): Promise<string> {
+        const needed = new Map<string, { quantity: Prisma.Decimal; name: string }>();
+        for (const item of items) {
+            const unit = await tx.units_of_measure.findUnique({
+                where: { id: item.unit_id },
+                select: { conversion_factor: true },
+            });
+            const factor = unit?.conversion_factor ?? new Prisma.Decimal(1);
+            const base = new Prisma.Decimal(item.quantity).mul(factor);
+            const current = needed.get(item.variant_id);
+            needed.set(item.variant_id, {
+                quantity: (current?.quantity ?? new Prisma.Decimal(0)).add(base),
+                name: item.product_name?.trim() || current?.name || 'المادة',
+            });
+        }
+
+        const active = await tx.warehouses.findMany({
+            where: { status: 'ACTIVE' },
+            select: { id: true },
+        });
+        const ordered = [
+            preferredWarehouseId,
+            ...active.map((warehouse) => warehouse.id).filter((id) => id !== preferredWarehouseId),
+        ];
+
+        let missingName = 'المادة';
+        for (const candidateId of ordered) {
+            let fits = true;
+            for (const [variantId, requirement] of needed) {
+                const stock = await tx.stock_levels.findUnique({
+                    where: {
+                        variant_id_warehouse_id: {
+                            variant_id: variantId,
+                            warehouse_id: candidateId,
+                        },
+                    },
+                });
+                const held = await this.floor.heldQuantity(tx, variantId, candidateId);
+                const available = (stock?.quantity_on_hand ?? new Prisma.Decimal(0))
+                    .sub(stock?.quantity_reserved ?? 0)
+                    .sub(held);
+                if (available.lt(requirement.quantity)) {
+                    fits = false;
+                    missingName = requirement.name;
+                    break;
+                }
+            }
+            if (fits) {
+                return candidateId;
+            }
+        }
+
+        throw new BadRequestException({
+            code: 'INSUFFICIENT_STOCK',
+            message: `الكمية غير كافية بالمخزن للمادة "${missingName}"`,
+        });
     }
 
     /**

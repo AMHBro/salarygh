@@ -1,10 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:qr/qr.dart';
 
 import '../../features/reports/models/report_catalog.dart';
 import '../../features/settings/data/company_settings_repository.dart';
 import '../../features/settings/models/document_layout.dart';
+import '../../features/settings/data/print_settings_store.dart';
+import '../../features/settings/models/print_settings.dart';
 import '../di/app_services.dart';
 import '../theme/app_theme.dart';
 import 'print_channel.dart';
@@ -36,6 +39,15 @@ class PrintDocument {
   final String previousIqdLabel;
   final String paidIqdLabel;
   final String remainingIqdLabel;
+  final String phone;
+  final String representative;
+  final String driver;
+  final List<String> itemCodes;
+  final bool accountStatement;
+  final double debitTotal;
+  final double creditTotal;
+  final String lastPaymentDate;
+  final double lastPaymentAmount;
 
   const PrintDocument({
     required this.kind,
@@ -64,6 +76,15 @@ class PrintDocument {
     this.previousIqdLabel = 'الرصيد السابق دينار',
     this.paidIqdLabel = 'المبلغ المسدد دينار',
     this.remainingIqdLabel = 'الرصيد المتبقي دينار',
+    this.phone = '',
+    this.representative = '',
+    this.driver = '',
+    this.itemCodes = const [],
+    this.accountStatement = false,
+    this.debitTotal = 0,
+    this.creditTotal = 0,
+    this.lastPaymentDate = '',
+    this.lastPaymentAmount = 0,
   });
 
   bool get hasIdentity =>
@@ -206,6 +227,12 @@ Future<void> showPrintPreview(
 ) async {
   var header = const DocumentHeader();
   var sections = const <String>[];
+  var printSettings = const PrintSettings();
+  try {
+    printSettings = await PrintSettingsStore(AppServices.database).read();
+  } catch (_) {
+    printSettings = const PrintSettings();
+  }
   try {
     final company = await CompanySettingsRepository(
       apiClient: AppServices.apiClient,
@@ -244,6 +271,23 @@ Future<void> showPrintPreview(
     sections = _localPrintSections(document);
   }
 
+  final logo = printSettings.logoData.trim().isNotEmpty
+      ? printSettings.logoData.trim()
+      : header.logoUrl;
+  header = DocumentHeader(
+    officeName: header.officeName,
+    address: header.address,
+    description: header.description,
+    phone: header.phone,
+    phone2: header.phone2,
+    phoneLabel: header.phoneLabel,
+    phone2Label: header.phone2Label,
+    logoUrl: logo,
+    position: printSettings.logoPosition,
+    extraLines: header.extraLines,
+    watermark: header.watermark,
+  );
+
   if (!context.mounted) return;
 
   return showDialog<void>(
@@ -272,7 +316,9 @@ Future<void> showPrintPreview(
                       ),
                       const SizedBox(width: 8),
                       FilledButton.icon(
-                        onPressed: () => openPrintWindow(_html(document, header, sections)),
+                        onPressed: () => openPrintWindow(
+                          _html(document, header, sections, printSettings),
+                        ),
                         icon: const Icon(Icons.print_outlined, size: 16),
                         label: const Text('طباعة'),
                       ),
@@ -287,6 +333,7 @@ Future<void> showPrintPreview(
                         document: document,
                         header: header,
                         sections: sections,
+                        settings: printSettings,
                       ),
                     ),
                   ),
@@ -300,15 +347,65 @@ Future<void> showPrintPreview(
   );
 }
 
+class PrintSheetView extends StatelessWidget {
+  final PrintDocument document;
+  final PrintSettings settings;
+  final DocumentHeader header;
+  final void Function(String id, double dx, double dy)? onFieldMoved;
+
+  const PrintSheetView({
+    super.key,
+    required this.document,
+    required this.settings,
+    this.header = const DocumentHeader(),
+    this.onFieldMoved,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final logo = settings.logoData.trim().isNotEmpty
+        ? settings.logoData.trim()
+        : header.logoUrl;
+    final chrome = DocumentHeader(
+      officeName: header.officeName,
+      address: header.address,
+      description: header.description,
+      phone: header.phone,
+      phone2: header.phone2,
+      phoneLabel: header.phoneLabel,
+      phone2Label: header.phone2Label,
+      logoUrl: logo,
+      position: settings.logoPosition,
+      extraLines: header.extraLines,
+      watermark: false,
+    );
+    final receipt = document.kind.contains('وصل') || document.kind.contains('سند');
+    final blocks = receipt
+        ? DocumentLayouts.receiptDefaults
+        : DocumentLayouts.invoiceDefaults;
+    return _Paper(
+      document: document,
+      header: chrome,
+      sections: [for (final block in blocks) block.id],
+      settings: settings,
+      onFieldMoved: onFieldMoved,
+    );
+  }
+}
+
 class _Paper extends StatelessWidget {
   final PrintDocument document;
   final DocumentHeader header;
   final List<String> sections;
+  final PrintSettings settings;
+  final void Function(String id, double dx, double dy)? onFieldMoved;
 
   const _Paper({
     required this.document,
     required this.header,
     required this.sections,
+    required this.settings,
+    this.onFieldMoved,
   });
 
   bool get _all => sections.isEmpty;
@@ -366,13 +463,17 @@ class _Paper extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          if (header.watermark && header.logoUrl.isNotEmpty)
+          if (_watermarkUrl.isNotEmpty)
             Positioned.fill(
               child: IgnorePointer(
                 child: Center(
                   child: Opacity(
-                    opacity: 0.08,
-                    child: _logoImage(header.logoUrl, size: 280),
+                    opacity: settings.watermarkOpacity.clamp(0.05, 0.30),
+                    child: _logoImage(
+                      _watermarkUrl,
+                      size: settings.watermarkWidth,
+                      height: settings.watermarkHeight,
+                    ),
                   ),
                 ),
               ),
@@ -381,8 +482,33 @@ class _Paper extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (settings.headerText.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      settings.headerText.trim(),
+                      textAlign: _textAlign(settings.headerAlign),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: settings.headerFontSize,
+                      ),
+                    ),
+                  ),
+                ..._customFields('header'),
                 ...children,
-                if (document.totals.isNotEmpty) _moneyLines(document.totals),
+                if (_saleInvoice) _logistics(),
+                ..._customFields('footer'),
+                if (settings.footerText.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      settings.footerText.trim(),
+                      textAlign: _textAlign(settings.footerAlign),
+                      style: TextStyle(fontSize: settings.footerFontSize),
+                    ),
+                  ),
+                if (settings.showQr) _qrMark(),
+                if (_extraMoneyLines().isNotEmpty) _moneyLines(_extraMoneyLines()),
               ],
             ),
           ),
@@ -391,16 +517,78 @@ class _Paper extends StatelessWidget {
     );
   }
 
+  String get _watermarkUrl => settings.watermarkSource(header.logoUrl);
+
+  TextAlign _textAlign(String align) {
+    switch (align) {
+      case 'right':
+        return TextAlign.right;
+      case 'left':
+        return TextAlign.left;
+      default:
+        return TextAlign.center;
+    }
+  }
+
+  Alignment _boxAlign(String align) {
+    switch (align) {
+      case 'right':
+        return Alignment.centerRight;
+      case 'left':
+        return Alignment.centerLeft;
+      default:
+        return Alignment.center;
+    }
+  }
+
+  List<Widget> _customFields(String zone) {
+    return [
+      for (final field in settings.customFields)
+        if (field.zone == zone &&
+            (field.label.trim().isNotEmpty || field.value.trim().isNotEmpty))
+          Align(
+            alignment: _boxAlign(field.align),
+            child: GestureDetector(
+              onPanUpdate: onFieldMoved == null
+                  ? null
+                  : (details) {
+                      onFieldMoved!(
+                        field.id,
+                        field.dx + details.delta.dx,
+                        field.dy + details.delta.dy,
+                      );
+                    },
+              child: Transform.translate(
+                offset: Offset(field.dx, field.dy),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text(
+                    field.label.trim().isEmpty
+                        ? field.value.trim()
+                        : '${field.label.trim()}: ${field.value.trim()}',
+                    textAlign: _textAlign(field.align),
+                    style: TextStyle(fontSize: field.fontSize),
+                  ),
+                ),
+              ),
+            ),
+          ),
+    ];
+  }
+
   Widget? _section(String id) {
     switch (id) {
       case 'company':
-        return _CompanyBlock(header: header);
+        return _CompanyBlock(header: header, logoSize: settings.logoSize);
       case 'meta':
         return _meta();
       case 'customer':
-        return document.party.trim().isEmpty ? null : _customer();
+        if (!settings.showCustomer || document.party.trim().isEmpty) {
+          return null;
+        }
+        return _customer();
       case 'items':
-        return document.columns.isEmpty ? null : _items();
+        return _items();
       case 'notes':
         return document.lines.isEmpty ? null : _MetaLines(lines: document.lines);
       case 'signature':
@@ -430,6 +618,14 @@ class _Paper extends StatelessWidget {
     }
   }
 
+  bool get _saleInvoice {
+    final kind = document.kind;
+    if (kind.contains('شراء') || kind.contains('كشف') || kind.contains('سند') || kind.contains('وصل')) {
+      return false;
+    }
+    return kind.contains('بيع') || kind.contains('قائمة');
+  }
+
   Widget _meta() {
     final number = document.number.trim().isNotEmpty
         ? document.number.trim()
@@ -438,7 +634,8 @@ class _Paper extends StatelessWidget {
       padding: const EdgeInsets.only(top: 8),
       child: Row(
         children: [
-          Expanded(child: Text('رقم $number', textAlign: TextAlign.start)),
+          if (settings.showNumber)
+            Expanded(child: Text('رقم $number', textAlign: TextAlign.start)),
           Expanded(
             child: Text(
               _arabic(document.documentType),
@@ -450,8 +647,8 @@ class _Paper extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('التاريخ: ${document.printedDate}'),
-                Text('الوقت: ${document.printedTime}'),
+                if (settings.showDate) Text('التاريخ: ${document.printedDate}'),
+                if (settings.showTime) Text('الوقت: ${document.printedTime}'),
               ],
             ),
           ),
@@ -461,21 +658,31 @@ class _Paper extends StatelessWidget {
   }
 
   Widget _customer() {
+    final phone = document.phone.trim();
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(border: Border.all(color: Colors.black)),
-      child: Text(
-        document.partyLabel.trim() == 'كشف'
-            ? 'كشف ${document.party.trim()}'
-            : 'حضرة السيد : ${document.party.trim()} المحترم',
-        textAlign: TextAlign.center,
-        style: const TextStyle(fontWeight: FontWeight.w700),
+      child: Column(
+        children: [
+          Text(
+            document.partyLabel.trim() == 'كشف'
+                ? 'كشف ${document.party.trim()}'
+                : 'حضرة السيد : ${document.party.trim()} المحترم',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          if (settings.showPhone && phone.isNotEmpty)
+            Text('الهاتف: $phone', textAlign: TextAlign.center),
+        ],
       ),
     );
   }
 
-  Widget _items() {
+  Widget? _items() {
+    final columns = _visibleColumns();
+    final rows = _visibleRows();
+    if (columns.isEmpty) return null;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Table(
@@ -484,18 +691,21 @@ class _Paper extends StatelessWidget {
         children: [
           TableRow(
             children: [
-              for (final column in document.columns)
+              for (final column in columns)
                 Padding(
                   padding: const EdgeInsets.all(4),
                   child: Text(
                     _arabic(column),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      fontSize: settings.tableFontSize,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
             ],
           ),
-          for (final row in document.rows)
+          for (final row in rows)
             TableRow(
               children: [
                 for (final cell in row)
@@ -504,10 +714,10 @@ class _Paper extends StatelessWidget {
                     child: Text(
                       _arabic(cell),
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 12),
+                      style: TextStyle(fontSize: settings.tableFontSize),
                     ),
                   ),
-                for (var index = row.length; index < document.columns.length; index++)
+                for (var index = row.length; index < columns.length; index++)
                   const SizedBox.shrink(),
               ],
             ),
@@ -516,30 +726,145 @@ class _Paper extends StatelessWidget {
     );
   }
 
+  List<String> _extraMoneyLines() {
+    return [
+      for (final line in document.totals)
+        if (!_repeatsFinancialFooter(line)) line,
+    ];
+  }
+
+  bool _keepColumn(String name) {
+    if (!settings.showItemCode &&
+        (name.contains('رمز') || name.contains('كود') || name.toUpperCase() == 'SKU')) {
+      return false;
+    }
+    if (!settings.showUnitPrice && name.contains('سعر')) return false;
+    if (!settings.showLineDiscount && name.contains('خصم')) return false;
+    if (!settings.showLineTotal && (name == 'المبلغ' || name.contains('إجمالي'))) {
+      return false;
+    }
+    if (!settings.showCartons && _saleInvoice && name.contains('كارتون')) return false;
+    return true;
+  }
+
+  List<String> _visibleColumns() {
+    final columns = <String>[];
+    for (final column in document.columns) {
+      if (_keepColumn(column)) columns.add(column);
+    }
+    if (settings.showItemCode &&
+        document.itemCodes.isNotEmpty &&
+        !columns.any((column) => column.contains('رمز'))) {
+      final insertAt = columns.isEmpty ? 0 : 1;
+      columns.insert(insertAt, 'رمز المادة');
+    }
+    return columns;
+  }
+
+  List<List<String>> _visibleRows() {
+    final sourceColumns = document.columns;
+    final kept = <int>[
+      for (var index = 0; index < sourceColumns.length; index++)
+        if (_keepColumn(sourceColumns[index])) index,
+    ];
+    final addCode = settings.showItemCode &&
+        document.itemCodes.length == document.rows.length &&
+        document.itemCodes.isNotEmpty &&
+        !sourceColumns.any((column) => column.contains('رمز'));
+    return [
+      for (var rowIndex = 0; rowIndex < document.rows.length; rowIndex++)
+        [
+          if (addCode && kept.isEmpty) document.itemCodes[rowIndex],
+          for (var index = 0; index < kept.length; index++) ...[
+            if (addCode && index == 1) document.itemCodes[rowIndex],
+            document.rows[rowIndex].length > kept[index]
+                ? document.rows[rowIndex][kept[index]]
+                : '',
+          ],
+          if (addCode && kept.length == 1) document.itemCodes[rowIndex],
+        ],
+    ];
+  }
+
+  Widget _logistics() {
+    final representative = document.representative.trim();
+    final driver = document.driver.trim().isNotEmpty
+        ? document.driver.trim()
+        : settings.driverName.trim();
+    final lines = <String>[
+      if (settings.showRepresentative && representative.isNotEmpty)
+        'المندوب: $representative',
+      if (settings.showDriver && driver.isNotEmpty) 'السائق: $driver',
+    ];
+    if (lines.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final line in lines)
+            Text(line, textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+
+  Widget _qrMark() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        children: [
+          Center(child: _qrImage(kStorefrontUrl, 96)),
+          const SizedBox(height: 4),
+          const Text('المتجر', textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+
   Widget _footer() {
+    if (document.accountStatement) {
+      return _statementFooter();
+    }
     final total = document.grandTotal > 0
         ? document.grandTotal
         : _totalFromLines(document.totals);
     final cells = <TableRow>[];
     if (_on('discount') || _on('hamala') || _on('cartons') || _on('amount')) {
       cells.add(_gridRow([
-        _on('discount') ? _pair('الخصم', moneyText(document.discount)) : const SizedBox.shrink(),
+        settings.showLineDiscount && _on('discount')
+            ? _pair('الخصم', moneyText(document.discount))
+            : const SizedBox.shrink(),
         _on('hamala') ? _pair('الحمالية', moneyText(document.porterage)) : const SizedBox.shrink(),
-        _on('cartons') ? _pair('عدد الكارتون', moneyText(document.cartonCount)) : const SizedBox.shrink(),
+        settings.showCartons && _saleInvoice && _on('cartons')
+            ? _pair('عدد الكارتون', moneyText(document.cartonCount))
+            : const SizedBox.shrink(),
       ]));
     }
     if (_on('dinar') || _on('payment') || _on('balance') || _on('totals')) {
       cells.add(_gridRow([
-        _pair(document.previousIqdLabel, moneyText(document.previousIqd)),
-        _pair(document.paidIqdLabel, moneyText(document.paidIqd)),
-        _pair(document.remainingIqdLabel, moneyText(document.remainingIqd)),
+        settings.showPreviousDebt
+            ? _pair(document.previousIqdLabel, moneyText(document.previousIqd))
+            : const SizedBox.shrink(),
+        settings.showPaid
+            ? _pair(document.paidIqdLabel, moneyText(document.paidIqd))
+            : const SizedBox.shrink(),
+        settings.showFinalNet
+            ? _pair(document.remainingIqdLabel, moneyText(document.remainingIqd))
+            : const SizedBox.shrink(),
       ]));
     }
     if (_on('dollar') || _on('payment') || _on('balance')) {
       cells.add(_gridRow([
-        _pair('الرصيد السابق دولار', moneyText(document.previousUsd)),
-        _pair('المبلغ المسدد دولار', moneyText(document.paidUsd)),
-        _pair('الرصيد النهائي دولار', moneyText(document.remainingUsd)),
+        settings.showPreviousDebt
+            ? _pair('الرصيد السابق دولار', moneyText(document.previousUsd))
+            : const SizedBox.shrink(),
+        settings.showPaid
+            ? _pair('المبلغ المسدد دولار', moneyText(document.paidUsd))
+            : const SizedBox.shrink(),
+        settings.showFinalNet
+            ? _pair('الرصيد النهائي دولار', moneyText(document.remainingUsd))
+            : const SizedBox.shrink(),
       ]));
     }
 
@@ -598,6 +923,71 @@ class _Paper extends StatelessWidget {
         for (final child in children)
           Padding(padding: const EdgeInsets.all(6), child: child),
       ],
+    );
+  }
+
+  Widget _statementFooter() {
+    final balance = document.remainingIqd;
+    final lastDate = document.lastPaymentDate.trim().isEmpty
+        ? '—'
+        : document.lastPaymentDate.trim();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_on('totals'))
+            Container(
+              decoration: BoxDecoration(border: Border.all(color: Colors.black)),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Text(
+                        moneyText(balance),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+                  Container(width: 1, height: 32, color: Colors.black),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      'صافي الرصيد الحالي',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (_on('words'))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                arabicMoneyWords(balance),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          Table(
+            border: TableBorder.all(color: Colors.black),
+            children: [
+              _gridRow([
+                _pair('إجمالي المدين', moneyText(document.debitTotal)),
+                _pair('إجمالي الدائن', moneyText(document.creditTotal)),
+                _pair('الرصيد النهائي المستحق', moneyText(balance)),
+              ]),
+              _gridRow([
+                _pair('تاريخ آخر تسديد', lastDate),
+                _pair('المبلغ المسدد', moneyText(document.lastPaymentAmount)),
+                const SizedBox.shrink(),
+              ]),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -791,7 +1181,8 @@ class _TotalsBox extends StatelessWidget {
   }
 }
 
-Widget _logoImage(String url, {double size = 64}) {
+Widget _logoImage(String url, {double size = 64, double? height}) {
+  final boxHeight = height ?? size;
   if (url.startsWith('data:')) {
     final comma = url.indexOf(',');
     if (comma > 0) {
@@ -799,7 +1190,7 @@ Widget _logoImage(String url, {double size = 64}) {
         return Image.memory(
           base64Decode(url.substring(comma + 1)),
           width: size,
-          height: size,
+          height: boxHeight,
           fit: BoxFit.contain,
         );
       } catch (_) {}
@@ -808,7 +1199,7 @@ Widget _logoImage(String url, {double size = 64}) {
   return Image.network(
     url,
     width: size,
-    height: size,
+    height: boxHeight,
     errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
   );
 }
@@ -944,8 +1335,12 @@ String _escape(String value) {
 
 class _CompanyBlock extends StatelessWidget {
   final DocumentHeader header;
+  final double logoSize;
 
-  const _CompanyBlock({required this.header});
+  const _CompanyBlock({
+    required this.header,
+    this.logoSize = 72,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -971,14 +1366,22 @@ class _CompanyBlock extends StatelessWidget {
         if (phones.isNotEmpty) Text(phones, textAlign: TextAlign.center),
       ],
     );
+    final smallLogo = header.logoUrl.trim().isEmpty
+        ? const SizedBox.shrink()
+        : _logoImage(header.logoUrl, size: logoSize);
     if (header.officeName.trim().isEmpty &&
         header.address.trim().isEmpty &&
-        phones.isEmpty) {
+        header.description.trim().isEmpty &&
+        phones.isEmpty &&
+        header.logoUrl.trim().isEmpty) {
       return const SizedBox.shrink();
     }
-    final smallLogo = header.logoUrl.isEmpty || header.watermark
-        ? const SizedBox.shrink()
-        : _logoImage(header.logoUrl);
+    final centered = Column(
+      children: [
+        smallLogo,
+        text,
+      ],
+    );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -989,8 +1392,14 @@ class _CompanyBlock extends StatelessWidget {
       child: header.position == 'left'
           ? Row(children: [Expanded(child: text), smallLogo])
           : header.position == 'right'
-              ? Row(children: [smallLogo, const SizedBox(width: 8), Expanded(child: text)])
-              : text,
+              ? Row(
+                  children: [
+                    smallLogo,
+                    const SizedBox(width: 8),
+                    Expanded(child: text),
+                  ],
+                )
+              : centered,
     );
   }
 }
@@ -1038,15 +1447,25 @@ String _phoneLine(DocumentHeader header) {
   return phones.where((line) => line.trim().isNotEmpty).join(' - ');
 }
 
-String _companyHtml(DocumentHeader header) {
+String _companyHtml(DocumentHeader header, PrintSettings settings) {
   final phones = _phoneLine(header);
+  final logo = header.logoUrl.trim().isEmpty
+      ? ''
+      : '<img class="logo" style="width:${settings.logoSize.round()}px;height:${settings.logoSize.round()}px;object-fit:contain" src="${header.logoUrl.replaceAll('"', '')}" alt="">';
   if (header.officeName.trim().isEmpty &&
       header.address.trim().isEmpty &&
-      phones.isEmpty) {
+      phones.isEmpty &&
+      logo.isEmpty) {
     return '';
   }
+  final align = header.position == 'left'
+      ? 'flex-start'
+      : header.position == 'right'
+          ? 'flex-end'
+          : 'center';
   return '''
-<div class="company">
+<div class="company" style="display:flex;flex-direction:column;align-items:$align">
+  $logo
   <div class="office">${_escape(header.officeName.trim())}</div>
   <div>${_escape(header.address.trim())}</div>
   <div>${_escape(header.description.trim())}</div>
@@ -1087,28 +1506,92 @@ List<String> _localPrintSections(PrintDocument document) {
   ];
 }
 
-String _html(PrintDocument document, DocumentHeader header, List<String> sections) {
+String _html(
+  PrintDocument document,
+  DocumentHeader header,
+  List<String> sections,
+  PrintSettings settings,
+) {
   bool on(String id) => sections.isEmpty || sections.contains(id);
-  final head = document.columns
-      .map((column) => '<th>${_escape(_arabic(column))}</th>')
-      .join();
-  final body = document.rows
+  final sale = _isSaleInvoice(document);
+  final columns = _sheetColumns(document, settings, sale);
+  final rows = _sheetRows(document, settings, sale);
+  final head = columns.map((column) => '<th>${_escape(_arabic(column))}</th>').join();
+  final body = rows
       .map(
-        (row) =>
-            '<tr>${row.map((cell) => '<td>${_escape(_arabic(cell))}</td>').join()}</tr>',
+        (row) => '<tr>${row.map((cell) => '<td>${_escape(_arabic(cell))}</td>').join()}</tr>',
       )
       .join();
-  final total = document.grandTotal > 0
-      ? document.grandTotal
-      : _totalFromLines(document.totals);
+  final statement = document.accountStatement;
+  final total = statement
+      ? document.remainingIqd
+      : document.grandTotal > 0
+          ? document.grandTotal
+          : _totalFromLines(document.totals);
+  final totalCaption = statement ? 'صافي الرصيد الحالي' : 'مجموع القائمة';
   final number = document.number.trim().isNotEmpty
       ? document.number.trim()
       : document.title.trim();
-  final watermark = header.watermark && header.logoUrl.isNotEmpty
-      ? '<img class="watermark" src="${header.logoUrl.replaceAll('"', '')}" alt="">'
-      : '';
+  final mark = settings.watermarkSource(header.logoUrl);
+  final watermark = mark.isEmpty
+      ? ''
+      : '<img class="watermark" style="width:${settings.watermarkWidth.round()}px;height:${settings.watermarkHeight.round()}px;opacity:${settings.watermarkOpacity.clamp(0.05, 0.30)}" src="${mark.replaceAll('"', '')}" alt="">';
   final notes = document.lines.map((line) => '<div>${_escape(_arabic(line))}</div>').join();
   final extras = header.extraLines.map((line) => '<div>${_escape(line)}</div>').join();
+  final money = document.totals
+      .where((line) => !_repeatsFinancialFooter(line))
+      .map((line) => '<div class="words">${_escape(_arabic(line))}</div>')
+      .join();
+  final representative = document.representative.trim();
+  final driver = document.driver.trim().isNotEmpty
+      ? document.driver.trim()
+      : settings.driverName.trim();
+  final logistics = !sale
+      ? ''
+      : [
+          if (settings.showRepresentative && representative.isNotEmpty)
+            '<div class="words">المندوب: ${_escape(representative)}</div>',
+          if (settings.showDriver && driver.isNotEmpty)
+            '<div class="words">السائق: ${_escape(driver)}</div>',
+        ].join();
+  final phone = settings.showPhone && document.phone.trim().isNotEmpty
+      ? '<div>الهاتف: ${_escape(document.phone.trim())}</div>'
+      : '';
+  final qr = settings.showQr
+      ? '<div class="words">${_qrSvg(kStorefrontUrl, 96)}<div>المتجر</div></div>'
+      : '';
+  final headerFields = _customFieldsHtml(settings, 'header');
+  final footerFields = _customFieldsHtml(settings, 'footer');
+  final discountCell = settings.showLineDiscount && on('discount')
+      ? '<td>الخصم ${moneyText(document.discount)}</td>'
+      : '<td></td>';
+  final cartonCell = settings.showCartons && sale && on('cartons')
+      ? '<td>عدد الكارتون ${moneyText(document.cartonCount)}</td>'
+      : '<td></td>';
+  final previousCell = settings.showPreviousDebt
+      ? '<td>${_escape(document.previousIqdLabel)} ${moneyText(document.previousIqd)}</td>'
+      : '<td></td>';
+  final paidCell = settings.showPaid
+      ? '<td>${_escape(document.paidIqdLabel)} ${moneyText(document.paidIqd)}</td>'
+      : '<td></td>';
+  final finalCell = settings.showFinalNet
+      ? '<td>${_escape(document.remainingIqdLabel)} ${moneyText(document.remainingIqd)}</td>'
+      : '<td></td>';
+  final lastPayment = document.lastPaymentDate.trim().isEmpty
+      ? '—'
+      : document.lastPaymentDate.trim();
+  final grid = statement
+      ? '<table class="grid"><tr>'
+          '<td>إجمالي المدين ${moneyText(document.debitTotal)}</td>'
+          '<td>إجمالي الدائن ${moneyText(document.creditTotal)}</td>'
+          '<td>الرصيد النهائي المستحق ${moneyText(total)}</td>'
+          '</tr><tr>'
+          '<td>تاريخ آخر تسديد ${_escape(lastPayment)}</td>'
+          '<td>المبلغ المسدد ${moneyText(document.lastPaymentAmount)}</td>'
+          '<td></td></tr></table>'
+      : '<table class="grid"><tr>$discountCell'
+          '<td>${on('hamala') ? 'الحمالية ${moneyText(document.porterage)}' : ''}</td>'
+          '$cartonCell</tr><tr>$previousCell$paidCell$finalCell</tr></table>';
 
   return '''
 <!doctype html>
@@ -1118,14 +1601,16 @@ String _html(PrintDocument document, DocumentHeader header, List<String> section
 <title>${_escape(_arabic(document.title))}</title>
 <style>
   body { font-family: Tahoma, "Segoe UI", sans-serif; margin: 18px; color: #111; direction: rtl; }
-  .sheet { position: relative; border: 1.5px solid #111; padding: 12px; min-height: 520px; }
-  .watermark { position: absolute; left: 50%; top: 42%; width: 280px; height: 280px; object-fit: contain; opacity: 0.08; transform: translate(-50%, -50%); }
+  .sheet { position: relative; border: 1.5px solid #111; padding: 12px; min-height: 520px; background: transparent; }
+  .sheet-bg { position: absolute; inset: 0; background: #fff; z-index: -2; }
+  .watermark { position: absolute; left: 50%; top: 50%; object-fit: contain; transform: translate(-50%, -50%); z-index: -1; pointer-events: none; }
+  .sheet-body { position: relative; z-index: 1; }
   .company { border: 1.5px solid #111; text-align: center; padding: 8px; margin-bottom: 8px; }
   .office { font-size: 26px; font-weight: 800; }
   .meta, .party, table, .sum { width: 100%; border-collapse: collapse; }
   .meta td, table th, table td, .sum td, .grid td { border: 1px solid #111; padding: 4px; text-align: center; }
   .party { margin-top: 8px; }
-  table { margin-top: 8px; }
+  table { margin-top: 8px; font-size: ${settings.tableFontSize.round()}px; }
   .words { text-align: center; font-weight: 700; margin: 6px 0; }
   .sign { margin-top: 16px; }
   .print-btn { margin-bottom: 12px; }
@@ -1135,37 +1620,192 @@ String _html(PrintDocument document, DocumentHeader header, List<String> section
 <body>
 <button class="print-btn" onclick="window.print()">طباعة</button>
 <div class="sheet">
+  <div class="sheet-bg"></div>
   $watermark
-  ${on('company') ? _companyHtml(header) : ''}
-  ${on('meta') ? '<table class="meta"><tr><td>رقم ${_escape(number)}</td><td>${_escape(_arabic(document.documentType))}</td><td>التاريخ: ${_escape(document.printedDate)}<br>الوقت: ${_escape(document.printedTime)}</td></tr></table>' : ''}
-  ${on('customer') && document.party.trim().isNotEmpty ? '<table class="party"><tr><td>${document.partyLabel.trim() == 'كشف' ? 'كشف ${_escape(document.party.trim())}' : 'حضرة السيد : ${_escape(document.party.trim())} المحترم'}</td></tr></table>' : ''}
-  ${on('items') && document.columns.isNotEmpty ? '<table><thead><tr>$head</tr></thead><tbody>$body</tbody></table>' : ''}
-  ${on('totals') ? '<table class="sum"><tr><td>${moneyText(total)}</td><td>مجموع القائمة</td></tr></table>' : ''}
+  <div class="sheet-body">
+  ${settings.headerText.trim().isEmpty ? '' : '<div class="words" style="text-align:${settings.headerAlign};font-size:${settings.headerFontSize}px">${_escape(settings.headerText.trim())}</div>'}
+  $headerFields
+  ${on('company') ? _companyHtml(header, settings) : ''}
+  ${on('meta') ? '<table class="meta"><tr>${settings.showNumber ? '<td>رقم ${_escape(number)}</td>' : '<td></td>'}<td>${_escape(_arabic(document.documentType))}</td><td>${settings.showDate ? 'التاريخ: ${_escape(document.printedDate)}' : ''}<br>${settings.showTime ? 'الوقت: ${_escape(document.printedTime)}' : ''}</td></tr></table>' : ''}
+  ${on('customer') && settings.showCustomer && document.party.trim().isNotEmpty ? '<table class="party"><tr><td>${document.partyLabel.trim() == 'كشف' ? 'كشف ${_escape(document.party.trim())}' : 'حضرة السيد : ${_escape(document.party.trim())} المحترم'}$phone</td></tr></table>' : ''}
+  ${on('items') && columns.isNotEmpty ? '<table><thead><tr>$head</tr></thead><tbody>$body</tbody></table>' : ''}
+  ${on('totals') ? '<table class="sum"><tr><td>${moneyText(total)}</td><td>$totalCaption</td></tr></table>' : ''}
   ${on('words') ? '<div class="words">${_escape(arabicMoneyWords(total))}</div>' : ''}
-  <table class="grid">
-    <tr>
-      <td>الخصم ${moneyText(document.discount)}</td>
-      <td>الحمالية ${moneyText(document.porterage)}</td>
-      <td>عدد الكارتون ${moneyText(document.cartonCount)}</td>
-    </tr>
-    <tr>
-      <td>${_escape(document.previousIqdLabel)} ${moneyText(document.previousIqd)}</td>
-      <td>${_escape(document.paidIqdLabel)} ${moneyText(document.paidIqd)}</td>
-      <td>${_escape(document.remainingIqdLabel)} ${moneyText(document.remainingIqd)}</td>
-    </tr>
-    <tr>
-      <td>الرصيد السابق دولار ${moneyText(document.previousUsd)}</td>
-      <td>المبلغ المسدد دولار ${moneyText(document.paidUsd)}</td>
-      <td>الرصيد النهائي دولار ${moneyText(document.remainingUsd)}</td>
-    </tr>
-  </table>
+  $grid
   ${on('notes') && notes.isNotEmpty ? '<div class="words">$notes</div>' : ''}
-  ${document.totals.map((line) => '<div class="words">${_escape(_arabic(line))}</div>').join()}
+  $money
+  $logistics
+  $footerFields
   ${on('extra') && extras.isNotEmpty ? '<div class="words">$extras</div>' : ''}
+  ${settings.footerText.trim().isEmpty ? '' : '<div class="words" style="text-align:${settings.footerAlign};font-size:${settings.footerFontSize}px">${_escape(settings.footerText.trim())}</div>'}
+  $qr
   ${on('signature') ? '<div class="sign">التوقيع</div>' : ''}
+  </div>
 </div>
 <script>window.addEventListener('load', function () { window.print(); });</script>
 </body>
 </html>
 ''';
+}
+
+String _customFieldsHtml(PrintSettings settings, String zone) {
+  final buffer = StringBuffer();
+  for (final field in settings.customFields) {
+    if (field.zone != zone) continue;
+    final text = field.label.trim().isEmpty
+        ? field.value.trim()
+        : '${field.label.trim()}: ${field.value.trim()}';
+    if (text.isEmpty) continue;
+    buffer.write(
+      '<div style="text-align:${field.align};font-size:${field.fontSize.round()}px;transform:translate(${field.dx}px,${field.dy}px)">${_escape(text)}</div>',
+    );
+  }
+  return buffer.toString();
+}
+
+bool _isSaleInvoice(PrintDocument document) {
+  final kind = document.kind;
+  if (kind.contains('شراء') ||
+      kind.contains('كشف') ||
+      kind.contains('سند') ||
+      kind.contains('وصل')) {
+    return false;
+  }
+  return kind.contains('بيع') || kind.contains('قائمة');
+}
+
+bool _repeatsFinancialFooter(String line) {
+  const keys = [
+    'إجمالي',
+    'مجموع',
+    'الكلي',
+    'المسدد',
+    'المدفوع',
+    'متبقي',
+    'المتبقي',
+    'السابق',
+    'النهائي',
+    'الحالي',
+    'الخصم',
+    'المبلغ',
+  ];
+  return keys.any(line.contains);
+}
+
+const kStorefrontUrl = 'https://web-1-inky-six.vercel.app/shop';
+
+bool _keepSheetColumn(String name, PrintSettings settings, bool sale) {
+  if (!settings.showItemCode &&
+      (name.contains('رمز') || name.contains('كود') || name.toUpperCase() == 'SKU')) {
+    return false;
+  }
+  if (!settings.showUnitPrice && name.contains('سعر')) return false;
+  if (!settings.showLineDiscount && name.contains('خصم')) return false;
+  if (!settings.showLineTotal && (name == 'المبلغ' || name.contains('إجمالي'))) {
+    return false;
+  }
+  if (!settings.showCartons && sale && name.contains('كارتون')) return false;
+  return true;
+}
+
+List<String> _sheetColumns(PrintDocument document, PrintSettings settings, bool sale) {
+  final columns = [
+    for (final column in document.columns)
+      if (_keepSheetColumn(column, settings, sale)) column,
+  ];
+  if (settings.showItemCode &&
+      document.itemCodes.isNotEmpty &&
+      !columns.any((column) => column.contains('رمز'))) {
+    columns.insert(columns.isEmpty ? 0 : 1, 'رمز المادة');
+  }
+  return columns;
+}
+
+List<List<String>> _sheetRows(PrintDocument document, PrintSettings settings, bool sale) {
+  final kept = <int>[
+    for (var index = 0; index < document.columns.length; index++)
+      if (_keepSheetColumn(document.columns[index], settings, sale)) index,
+  ];
+  final addCode = settings.showItemCode &&
+      document.itemCodes.length == document.rows.length &&
+      document.itemCodes.isNotEmpty &&
+      !document.columns.any((column) => column.contains('رمز'));
+  return [
+    for (var rowIndex = 0; rowIndex < document.rows.length; rowIndex++)
+      _withCode(
+        [
+          for (final index in kept)
+            index < document.rows[rowIndex].length ? document.rows[rowIndex][index] : '',
+        ],
+        addCode ? document.itemCodes[rowIndex] : null,
+      ),
+  ];
+}
+
+List<String> _withCode(List<String> cells, String? code) {
+  if (code == null) return cells;
+  final next = List<String>.from(cells);
+  next.insert(next.isEmpty ? 0 : 1, code);
+  return next;
+}
+
+String _qrSvg(String payload, double size) {
+  final code = QrCode.fromData(
+    data: payload,
+    errorCorrectLevel: QrErrorCorrectLevel.M,
+  );
+  final image = QrImage(code);
+  final count = image.moduleCount;
+  final cell = size / count;
+  final squares = StringBuffer();
+  for (var y = 0; y < count; y++) {
+    for (var x = 0; x < count; x++) {
+      if (image.isDark(y, x)) {
+        squares.write(
+          '<rect x="${x * cell}" y="${y * cell}" width="$cell" height="$cell" fill="#111"/>',
+        );
+      }
+    }
+  }
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="$size" height="$size" viewBox="0 0 $size $size">${squares.toString()}</svg>';
+}
+
+Widget _qrImage(String payload, double size) {
+  final code = QrCode.fromData(
+    data: payload,
+    errorCorrectLevel: QrErrorCorrectLevel.M,
+  );
+  final image = QrImage(code);
+  final count = image.moduleCount;
+  return SizedBox(
+    width: size,
+    height: size,
+    child: CustomPaint(painter: _QrPainter(image, count)),
+  );
+}
+
+class _QrPainter extends CustomPainter {
+  final QrImage image;
+  final int count;
+
+  _QrPainter(this.image, this.count);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = const Color(0xFF111111);
+    final cell = size.width / count;
+    for (var y = 0; y < count; y++) {
+      for (var x = 0; x < count; x++) {
+        if (image.isDark(y, x)) {
+          canvas.drawRect(
+            Rect.fromLTWH(x * cell, y * cell, cell, cell),
+            paint,
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _QrPainter oldDelegate) => false;
 }

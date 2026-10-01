@@ -145,6 +145,118 @@ export class FloorService implements OnModuleInit {
     });
   }
 
+  /**
+   * حجز طلب المتجر أو المندوب لحظة الإرسال. ينتهي بعد 15 دقيقة
+   * أو عند القبول والرفض والإلغاء.
+   */
+  async reserveOrder(
+    tx: SqlClient,
+    orderId: string,
+    lines: Array<{ variantId: string; baseQuantity: Prisma.Decimal }>,
+  ) {
+    await this.ensureSchema();
+    await tx.$executeRaw`DELETE FROM stock_holds WHERE expires_at <= NOW()`;
+    const expires = new Date(Date.now() + 15 * 60 * 1000);
+
+    for (const line of lines) {
+      if (line.baseQuantity.lte(0)) {
+        continue;
+      }
+
+      const locked = await tx.$queryRaw<Array<{ variant_id: string }>>`
+        SELECT variant_id::text
+        FROM stock_sale_locks
+        WHERE variant_id = CAST(${line.variantId} AS uuid)
+      `;
+      if (locked.length > 0) {
+        throw new ConflictException({
+          code: 'STOCK_LOCKED',
+          message: 'المادة مقفلة بعد بيع متعارض، بانتظار مراجعة المدير',
+        });
+      }
+
+      const candidates = await tx.$queryRaw<
+        Array<{ warehouse_id: string }>
+      >`
+        SELECT s.warehouse_id::text AS warehouse_id
+        FROM stock_levels s
+        JOIN warehouses w ON w.id = s.warehouse_id
+        WHERE s.variant_id = CAST(${line.variantId} AS uuid)
+        ORDER BY CASE WHEN w.status = 'ACTIVE' THEN 0 ELSE 1 END,
+                 (s.quantity_on_hand - s.quantity_reserved) DESC,
+                 s.warehouse_id
+      `;
+
+      let placed = false;
+      for (const candidate of candidates) {
+        await tx.$queryRaw`
+          SELECT id FROM stock_levels
+          WHERE variant_id = CAST(${line.variantId} AS uuid)
+            AND warehouse_id = CAST(${candidate.warehouse_id} AS uuid)
+          FOR UPDATE
+        `;
+        const stock = await tx.stock_levels.findUnique({
+          where: {
+            variant_id_warehouse_id: {
+              variant_id: line.variantId,
+              warehouse_id: candidate.warehouse_id,
+            },
+          },
+        });
+        const heldRows = await tx.$queryRaw<Array<{ held: unknown }>>`
+          SELECT COALESCE(SUM(quantity), 0) AS held
+          FROM stock_holds
+          WHERE variant_id = CAST(${line.variantId} AS uuid)
+            AND warehouse_id = CAST(${candidate.warehouse_id} AS uuid)
+            AND expires_at > NOW()
+            AND hold_key <> ${`eco:${orderId}:${line.variantId}`}
+        `;
+        const available = (stock?.quantity_on_hand ?? new Prisma.Decimal(0))
+          .sub(stock?.quantity_reserved ?? 0)
+          .sub(new Prisma.Decimal(`${heldRows[0]?.held ?? 0}`));
+        if (available.lt(line.baseQuantity)) {
+          continue;
+        }
+        const key = `eco:${orderId}:${line.variantId}`;
+        await tx.$executeRaw`
+          INSERT INTO stock_holds (id, variant_id, warehouse_id, quantity, hold_key, expires_at)
+          VALUES (
+            ${randomUUID()},
+            CAST(${line.variantId} AS uuid),
+            CAST(${candidate.warehouse_id} AS uuid),
+            ${line.baseQuantity.toString()},
+            ${key},
+            ${expires}
+          )
+          ON CONFLICT (hold_key) DO UPDATE
+          SET quantity = EXCLUDED.quantity,
+              warehouse_id = EXCLUDED.warehouse_id,
+              expires_at = EXCLUDED.expires_at
+        `;
+        placed = true;
+        break;
+      }
+
+      if (!placed) {
+        throw new ConflictException({
+          code: 'INSUFFICIENT_STOCK',
+          message: 'الكمية محجوزة أو غير متوفرة على السيرفر',
+        });
+      }
+    }
+  }
+
+  async releaseOrder(tx: SqlClient, orderId: string) {
+    const prefix = `eco:${orderId}:%`;
+    try {
+      await tx.$executeRaw`DELETE FROM stock_holds WHERE hold_key LIKE ${prefix}`;
+    } catch (error) {
+      if (!this.isMissingRelation(error)) {
+        throw error;
+      }
+    }
+  }
+
   async releaseHold(holdKey: string) {
     await this.ensureSchema();
     await this.prisma.$executeRaw`
@@ -168,14 +280,26 @@ export class FloorService implements OnModuleInit {
     variantId: string,
     warehouseId: string,
   ) {
-    const rows = await tx.$queryRaw<Array<{ held: unknown }>>`
-      SELECT COALESCE(SUM(quantity), 0) AS held
-      FROM stock_holds
-      WHERE variant_id = CAST(${variantId} AS uuid)
-        AND warehouse_id = CAST(${warehouseId} AS uuid)
-        AND expires_at > NOW()
-    `;
-    return new Prisma.Decimal(`${rows[0]?.held ?? 0}`);
+    try {
+      const rows = await tx.$queryRaw<Array<{ held: unknown }>>`
+        SELECT COALESCE(SUM(quantity), 0) AS held
+        FROM stock_holds
+        WHERE variant_id = CAST(${variantId} AS uuid)
+          AND warehouse_id = CAST(${warehouseId} AS uuid)
+          AND expires_at > NOW()
+      `;
+      return new Prisma.Decimal(`${rows[0]?.held ?? 0}`);
+    } catch (error) {
+      if (this.isMissingRelation(error)) {
+        return new Prisma.Decimal(0);
+      }
+      throw error;
+    }
+  }
+
+  private isMissingRelation(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : `${error ?? ''}`;
+    return message.includes('42P01') || message.includes('does not exist');
   }
 
   async append(

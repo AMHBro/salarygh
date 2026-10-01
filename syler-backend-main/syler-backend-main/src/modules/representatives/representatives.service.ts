@@ -4,6 +4,7 @@ import { CreateRepresentativeDto } from './dto/create-representative.dto';
 import { UpdateRepresentativeDto } from './dto/update-representative.dto';
 import { PayCommissionDto } from './dto/pay-commission.dto';
 import { writeAllowedPrices } from './allowed-prices';
+import { listRepDebtSnapshots, repDebtCeilingMessage } from './rep-debt';
 import { Prisma, rep_status_enum } from '@prisma/client';
 import { pageWindow } from '../../common/paging';
 import * as bcrypt from 'bcrypt';
@@ -83,6 +84,7 @@ export class RepresentativesService {
           office_phone: dto.office_phone,
           office_address: dto.office_address,
           location_url: dto.location_url,
+          max_debt_limit: dto.max_debt_limit ?? 0,
           status: rep_status_enum.ACTIVE,
         },
       });
@@ -169,6 +171,7 @@ export class RepresentativesService {
         office_address: rep.office_address ?? '—',
         location_url: rep.location_url ?? null,
         commission_rate: commissionRate,
+        max_debt_limit: Number(rep.max_debt_limit) || 0,
         invoices_count: invoicesCount,
         items_sold_count: itemsSold,
         total_sales: totalSales,
@@ -183,6 +186,25 @@ export class RepresentativesService {
       data,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
+  }
+
+  async debtCeilings() {
+    const rows = await listRepDebtSnapshots(this.prisma);
+    return rows.map((row) => {
+      const limit = new Prisma.Decimal(String(row.max_debt_limit ?? 0));
+      const total = new Prisma.Decimal(String(row.customer_debt_total ?? 0));
+      const exceeded = limit.gt(0) && total.gt(limit);
+      return {
+        id: row.id,
+        name: row.name,
+        max_debt_limit: Number(limit),
+        customer_debt_total: Number(total),
+        debt_ceiling_exceeded: exceeded,
+        debt_ceiling_message: exceeded
+          ? repDebtCeilingMessage(row.name, total, limit)
+          : null,
+      };
+    });
   }
 
   // ─── 4. تفاصيل مندوب واحد ────────────────────────────────────────────────
@@ -228,6 +250,7 @@ export class RepresentativesService {
         office_address: rep.office_address,
         location_url: rep.location_url,
         commission_rate: commissionRate,
+        max_debt_limit: Number(rep.max_debt_limit) || 0,
       },
       stats: {
         invoices_count: rep.sales_invoices.length,
@@ -290,6 +313,7 @@ export class RepresentativesService {
         office_phone: dto.office_phone,
         office_address: dto.office_address,
         location_url: dto.location_url,
+        max_debt_limit: dto.max_debt_limit,
         updated_at: new Date(),
       },
     });

@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../data/alira_agent_api.dart';
-import '../../../core/paging/list_page.dart';
 import '../data/alira_catalog.dart';
 import '../data/alira_mock.dart';
 import '../data/alira_store_orders.dart';
@@ -26,6 +26,10 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
   final _api = AliraAgentApi();
   final _username = TextEditingController();
   final _password = TextEditingController();
+  final _usernameLive = ValueNotifier('');
+  final _passwordLive = ValueNotifier('');
+  bool _usernameEdited = false;
+  bool _passwordEdited = false;
   final _officeName = TextEditingController();
   final _officePhone = TextEditingController();
   final _officeAddress = TextEditingController();
@@ -50,12 +54,16 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
   List<String> _allowedPrices = const ['representative'];
   String? _invoicePrice = 'representative';
   Map<String, dynamic>? _account;
+  final Map<String, AliraStatement> _statements = {};
+  bool _rememberLogin = false;
+  int _queuedCount = 0;
+  static const _loginStorage = FlutterSecureStorage();
 
   @override
   void initState() {
     super.initState();
     _signedIn = AliraCatalog.forceMock;
-    _routes = _mock.getRoutes('2026-09-20');
+    _routes = AliraCatalog.forceMock ? _mock.getRoutes('2026-09-20') : _blankRoutes();
     AliraCatalog.load(agent: true).then((_) {
       if (mounted) setState(() {});
     });
@@ -63,6 +71,44 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
       if (!mounted) return;
       setState(() => _elapsed += 1);
     });
+    _loadRemembered();
+    _refreshQueue();
+  }
+
+  Future<void> _loadRemembered() async {
+    try {
+      final remember = await _loginStorage.read(key: 'alira.agent.remember');
+      if (remember != '1' || !mounted) return;
+      final username = await _loginStorage.read(key: 'alira.agent.username') ?? '';
+      final password = await _loginStorage.read(key: 'alira.agent.password') ?? '';
+      setState(() {
+        _rememberLogin = true;
+        _username.text = username;
+        _password.text = password;
+        _usernameLive.value = username;
+        _passwordLive.value = password;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _persistLogin(String username, String password) async {
+    try {
+      if (!_rememberLogin) {
+        await _loginStorage.delete(key: 'alira.agent.remember');
+        await _loginStorage.delete(key: 'alira.agent.username');
+        await _loginStorage.delete(key: 'alira.agent.password');
+        return;
+      }
+      await _loginStorage.write(key: 'alira.agent.remember', value: '1');
+      await _loginStorage.write(key: 'alira.agent.username', value: username);
+      await _loginStorage.write(key: 'alira.agent.password', value: password);
+    } catch (_) {}
+  }
+
+  Future<void> _refreshQueue() async {
+    final count = await AliraStoreOrders.pendingCount();
+    if (!mounted) return;
+    setState(() => _queuedCount = count);
   }
 
   @override
@@ -70,6 +116,8 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     _timer?.cancel();
     _username.dispose();
     _password.dispose();
+    _usernameLive.dispose();
+    _passwordLive.dispose();
     _officeName.dispose();
     _officePhone.dispose();
     _officeAddress.dispose();
@@ -77,25 +125,295 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     _notes.dispose();
     _paid.dispose();
     _productSearch.dispose();
+    AliraCatalog.cancelPending();
     super.dispose();
   }
 
-  void _push(_Page page) => setState(() => _stack.add(page));
+  void _scheduleProducts() {
+    AliraCatalog.scheduleLoad(
+      agent: true,
+      query: _productSearch.text,
+      familyId: _productSearch.text.trim().isEmpty ? _familyId : null,
+      onDone: () {
+        if (mounted) setState(() {});
+      },
+    );
+  }
+
+  Future<void> _loadMoreProducts() async {
+    await AliraCatalog.load(agent: true, append: true);
+    if (mounted) setState(() {});
+  }
+
+  void _push(_Page page) {
+    setState(() => _stack.add(page));
+    if (page == _Page.invoice) {
+      _refreshCeiling();
+      _refreshQueue();
+    }
+  }
+
+  String? get _ceilingMessage {
+    final message = _account?['debt_ceiling_message'];
+    if (message is String && message.trim().isNotEmpty) return message.trim();
+    return null;
+  }
+
+  int get _customerDebtTotal => _asInt(_account?['customer_debt_total']);
+
+  int get _maxDebtLimit => _asInt(_account?['max_debt_limit']);
+
+  bool get _alreadyOverLimit => _maxDebtLimit > 0 && _customerDebtTotal > _maxDebtLimit;
+
+  int get _addedDebt {
+    if (_payment == 'CASH') return 0;
+    if (_payment == 'PARTIAL') {
+      final paid = int.tryParse(_paid.text.trim()) ?? 0;
+      if (paid > 0 && paid < _cartTotal) return _cartTotal - paid;
+    }
+    return _cartTotal;
+  }
+
+  bool get _projectedOverLimit {
+    if (_maxDebtLimit <= 0) return false;
+    return _customerDebtTotal + _addedDebt > _maxDebtLimit;
+  }
+
+  String? get _debtAlert {
+    if (_maxDebtLimit <= 0) return _ceilingMessage;
+    if (!_projectedOverLimit && !_alreadyOverLimit && _ceilingMessage == null) return null;
+    final shown = _projectedOverLimit ? _customerDebtTotal + _addedDebt : _customerDebtTotal;
+    final name = _repName.trim().isEmpty ? 'المندوب' : _repName.trim();
+    return 'تنبيه: مجموع ديون زبائن المندوب $name بلغت (${aliraMoney(shown)}) وتجاوزت السقف المسموح (${aliraMoney(_maxDebtLimit)})';
+  }
+
+  bool get _blockSend {
+    if (_alreadyOverLimit || _ceilingMessage != null) return true;
+    if (_payment == 'CASH') return false;
+    return _projectedOverLimit;
+  }
+
+  Widget _ceilingBanner() {
+    final message = _debtAlert;
+    if (message == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF1F0),
+          borderRadius: BorderRadius.circular(AliraColors.radius),
+          border: Border.all(color: AliraColors.red, width: 1.4),
+        ),
+        child: Text(
+          message,
+          style: const TextStyle(
+            color: Color(0xFF9B1C1C),
+            fontWeight: FontWeight.w800,
+            height: 1.45,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _queueBar() {
+    if (_queuedCount <= 0) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFE7EEF2),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Text(
+        'طلبات محفوظة محلياً: $_queuedCount · تُرفع عند رجوع الاتصال',
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AliraColors.teal),
+      ),
+    );
+  }
+
+  Future<void> _refreshCeiling() async {
+    final token = _api.token;
+    if (token == null || token.isEmpty) return;
+    try {
+      final account = await _api.account();
+      if (!mounted) return;
+      setState(() => _account = account);
+    } catch (_) {}
+  }
 
   void _pop() {
     if (_stack.length == 1) return;
     setState(() => _stack.removeLast());
   }
 
-  void _reload() => setState(() => _routes = _mock.getRoutes('2026-09-20'));
+  void _reload() {
+    if (AliraCatalog.forceMock) {
+      setState(() => _routes = _mock.getRoutes('2026-09-20'));
+      return;
+    }
+    setState(() {});
+  }
+
+  AliraRoutes _blankRoutes() {
+    final today = DateTime.now();
+    final date =
+        '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    return AliraRoutes(
+      date: date,
+      agentId: '',
+      kpis: AliraKpis(
+        visitsToday: 0,
+        remaining: 0,
+        completed: 0,
+        postponed: 0,
+        cooperating: 0,
+        notCooperating: 0,
+      ),
+      activeVisit: null,
+      customers: [],
+    );
+  }
+
+  String _routeDateLabel(String iso) {
+    const months = [
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
+    ];
+    final parsed = DateTime.tryParse(iso);
+    if (parsed == null) return iso;
+    return '${parsed.day} ${months[parsed.month - 1]}';
+  }
+
+  int _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.round();
+    return int.tryParse('$value') ?? 0;
+  }
+
+  AliraRoutes _routesFromAccounts(Map<String, dynamic> body) {
+    final previous = _routes?.activeVisit;
+    final raw = body['data'];
+    final list = raw is List ? raw : const [];
+    final customers = <AliraCustomer>[];
+    _statements.clear();
+    for (final item in list) {
+      if (item is! Map) continue;
+      final id = '${item['party_id'] ?? item['account_key'] ?? ''}';
+      if (id.isEmpty) continue;
+      final totals = item['representative_totals'];
+      final sales = totals is Map ? _asInt(totals['total_sales']) : 0;
+      final paid = totals is Map ? _asInt(totals['total_paid']) : 0;
+      final due = totals is Map ? _asInt(totals['total_due']) : _asInt(item['current_balance']);
+      final address = '${item['party_address'] ?? ''}'.trim();
+      final parts = address.split(RegExp(r'\s*-\s*')).where((part) => part.isNotEmpty).toList();
+      final customer = AliraCustomer(
+        id: id,
+        name: '${item['party_name'] ?? ''}',
+        city: parts.isEmpty ? address : parts.first,
+        area: parts.length > 1 ? parts.sublist(1).join(' - ') : '',
+        phone: '${item['party_phone'] ?? ''}',
+        balance: _asInt(item['current_balance']) != 0 ? _asInt(item['current_balance']) : due,
+        creditLimit: _asInt(item['credit_limit']),
+        allowedAmount: _asInt(item['available_credit']),
+        agingDays: 0,
+        cooperating: '${item['customer_status'] ?? 'ACTIVE'}' != 'INACTIVE',
+      );
+      customers.add(customer);
+      final last = item['last_order'];
+      final lastDate = last is Map ? '${last['submitted_at'] ?? ''}' : '';
+      _statements[id] = AliraStatement(
+        customerId: id,
+        debit: sales,
+        credit: paid,
+        balance: due,
+        lastMovementDate: lastDate.isEmpty ? null : lastDate,
+        entries: [
+          if (sales != 0)
+            AliraStatementEntry(
+              id: '$id-sales',
+              date: lastDate,
+              title: 'مبيعات المندوب',
+              amount: sales,
+            ),
+          if (paid != 0)
+            AliraStatementEntry(
+              id: '$id-paid',
+              date: lastDate,
+              title: 'مقبوض',
+              amount: -paid,
+            ),
+        ],
+      );
+    }
+    final rep = body['representative'];
+    final keptVisit = previous != null && customers.any((item) => item.id == previous.customerId)
+        ? previous
+        : null;
+    return AliraRoutes(
+      date: _blankRoutes().date,
+      agentId: rep is Map ? '${rep['id'] ?? ''}' : '',
+      kpis: AliraKpis(
+        visitsToday: customers.length,
+        remaining: customers.length,
+        completed: 0,
+        postponed: 0,
+        cooperating: customers.where((item) => item.cooperating).length,
+        notCooperating: customers.where((item) => !item.cooperating).length,
+      ),
+      activeVisit: keptVisit,
+      customers: customers,
+    );
+  }
+
+  Future<void> _refreshLiveRoutes() async {
+    if (AliraCatalog.forceMock) {
+      _reload();
+      return;
+    }
+    final token = _api.token;
+    if (token == null || token.isEmpty) {
+      if (!mounted) return;
+      setState(() => _routes = _blankRoutes());
+      return;
+    }
+    try {
+      final body = await _api.accounts();
+      if (!mounted) return;
+      setState(() => _routes = _routesFromAccounts(body));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _routes ??= _blankRoutes();
+        _error = AliraAgentApi.message(error);
+      });
+    }
+  }
 
   Future<void> _openVisit(AliraCustomer customer) async {
     final active = _routes?.activeVisit;
     AliraVisit visit;
     if (active != null && active.customerId == customer.id && active.status == 'in_progress') {
       visit = active;
-    } else {
+    } else if (AliraCatalog.forceMock) {
       visit = _mock.startVisit(customer.id);
+    } else {
+      visit = AliraVisit(
+        id: 'vis_${customer.id}',
+        customerId: customer.id,
+        status: 'in_progress',
+        startedAt: DateTime.now().toIso8601String(),
+      );
+      _routes?.activeVisit = visit;
     }
     _customer = customer;
     _notes.text = visit.notes;
@@ -133,7 +451,27 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
       },
     );
     if (!mounted || ok != true) return;
-    _mock.finishVisit(visit.id, action, _notes.text.trim());
+    if (AliraCatalog.forceMock) {
+      _mock.finishVisit(visit.id, action, _notes.text.trim());
+    } else {
+      visit.status = action == 'complete'
+          ? 'completed'
+          : action == 'postpone'
+              ? 'postponed'
+              : 'cancelled';
+      visit.endedAt = DateTime.now().toIso8601String();
+      visit.notes = _notes.text.trim();
+      final routes = _routes;
+      if (routes != null) {
+        if (action == 'complete') {
+          routes.kpis.completed += 1;
+          if (routes.kpis.remaining > 0) routes.kpis.remaining -= 1;
+        } else if (action == 'postpone') {
+          routes.kpis.postponed += 1;
+        }
+        routes.activeVisit = null;
+      }
+    }
     _reload();
     setState(() {
       _stack
@@ -142,12 +480,7 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     });
   }
 
-  AliraProduct? _shelfProduct(String id) {
-    for (final product in AliraCatalog.products) {
-      if (product.id == id) return product;
-    }
-    return null;
-  }
+  AliraProduct? _shelfProduct(String id) => AliraCatalog.byId(id);
 
   static const _priceLabels = {
     'wholesale': 'جملة',
@@ -214,6 +547,18 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
         setState(() => _error = 'سجل دخول المندوب قبل إرسال الطلب');
         return;
       }
+      final partialPaid = int.tryParse(_paid.text.trim()) ?? 0;
+      if (_payment == 'PARTIAL' &&
+          (partialPaid <= 0 || partialPaid >= _cartTotal)) {
+        setState(() {
+          _error = 'في البيع الجزئي يجب أن يكون المبلغ المدفوع أكبر من صفر وأقل من الإجمالي';
+        });
+        return;
+      }
+      if (_blockSend) {
+        setState(() => _error = _debtAlert ?? _ceilingMessage);
+        return;
+      }
       setState(() {
         _busy = true;
         _error = null;
@@ -229,6 +574,7 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
           partyPhone: customer.phone,
           partyAddress: '${customer.city} - ${customer.area}',
           paymentType: _payment,
+          paidAmount: _payment == 'PARTIAL' ? partialPaid : null,
           partyId: customer.id,
           priceType: _apiPriceType,
           lines: lines,
@@ -259,6 +605,7 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
         visit.pendingRequestsCount += 1;
         visit.invoicesCount += 1;
         _reload();
+        _refreshQueue();
         _push(_Page.sent);
       } catch (error) {
         if (!mounted) return;
@@ -267,6 +614,10 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
           _error = error is StateError ? error.message : AliraStoreOrders.message(error);
         });
       }
+      return;
+    }
+    if (!AliraCatalog.forceMock) {
+      setState(() => _error = 'الكتالوج غير متصل بالسيرفر');
       return;
     }
     try {
@@ -343,13 +694,42 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     }
   }
 
+  String _liveText(
+    TextEditingController controller,
+    ValueNotifier<String> live,
+  ) {
+    final typed = live.value.trim();
+    if (typed.isNotEmpty) {
+      if (controller.text != live.value) {
+        controller.value = TextEditingValue(
+          text: live.value,
+          selection: TextSelection.collapsed(offset: live.value.length),
+        );
+      }
+      return typed;
+    }
+    return controller.text.trim();
+  }
+
   Future<void> _login() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await WidgetsBinding.instance.endOfFrame;
+    final username = _usernameEdited
+        ? _usernameLive.value.trim()
+        : _liveText(_username, _usernameLive);
+    final password = _passwordEdited
+        ? _passwordLive.value
+        : _password.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _error = 'أدخل اسم المستخدم وكلمة المرور');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final body = await _api.login(_username.text, _password.text);
+      final body = await _api.login(username, password);
       final representative = body['representative'];
       if (!mounted) return;
       setState(() {
@@ -358,6 +738,10 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
         _repName = representative is Map ? '${representative['name'] ?? ''}' : '';
         _applyAllowedPrices(representative);
       });
+      await _persistLogin(username, password);
+      await _refreshLiveRoutes();
+      _refreshCeiling();
+      _refreshQueue();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -370,7 +754,12 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
   void _logout() {
     _api.token = null;
     _account = null;
-    _password.clear();
+    if (!_rememberLogin) {
+      _username.clear();
+      _password.clear();
+      _usernameLive.value = '';
+      _passwordLive.value = '';
+    }
     setState(() {
       _signedIn = false;
       _repName = '';
@@ -416,10 +805,33 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
       _error = null;
     });
     try {
-      if (!AliraCatalog.forceMock) {
+      if (AliraCatalog.forceMock) {
+        _mock.addOffice(name: name, phone: phone, address: address);
+      } else {
         await _api.createOffice(name: name, phone: phone, address: address);
+        final parts = address.split('-').map((part) => part.trim()).where((part) => part.isNotEmpty).toList();
+        _routes?.customers.insert(
+          0,
+          AliraCustomer(
+            id: 'office-${DateTime.now().microsecondsSinceEpoch}',
+            name: name,
+            city: parts.isEmpty ? address : parts.first,
+            area: parts.length > 1 ? parts.sublist(1).join(' - ') : '',
+            phone: phone,
+            balance: 0,
+            creditLimit: 0,
+            allowedAmount: 0,
+            agingDays: 0,
+            cooperating: true,
+          ),
+        );
+        final routes = _routes;
+        if (routes != null) {
+          routes.kpis.cooperating += 1;
+          routes.kpis.visitsToday += 1;
+          routes.kpis.remaining += 1;
+        }
       }
-      _mock.addOffice(name: name, phone: phone, address: address);
       _officeName.clear();
       _officePhone.clear();
       _officeAddress.clear();
@@ -460,39 +872,61 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
         ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             children: [
-              const Text(
-                'يتصل بعنوان السيرفر المحفوظ في الإعدادات',
-                style: TextStyle(fontSize: 12, color: AliraColors.muted),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _username,
-                decoration: const InputDecoration(
-                  labelText: 'اسم المستخدم',
-                  filled: true,
-                  fillColor: AliraColors.paper,
+              const SizedBox(height: 12),
+              AliraSoftCard(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('مرحباً بك', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'يتصل بعنوان السيرفر المحفوظ في الإعدادات',
+                      style: TextStyle(fontSize: 12, color: AliraColors.muted),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _username,
+                      onChanged: (value) {
+                        _usernameEdited = true;
+                        _usernameLive.value = value;
+                      },
+                      decoration: const InputDecoration(labelText: 'اسم المستخدم'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _password,
+                      obscureText: true,
+                      onChanged: (value) {
+                        _passwordEdited = true;
+                        _passwordLive.value = value;
+                      },
+                      onSubmitted: (_) {
+                        if (!_busy) _login();
+                      },
+                      decoration: const InputDecoration(labelText: 'كلمة المرور'),
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _rememberLogin,
+                      activeColor: AliraColors.teal,
+                      title: const Text('حفظ الدخول'),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: (value) => setState(() => _rememberLogin = value ?? false),
+                    ),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(_error!, style: const TextStyle(color: AliraColors.red, fontWeight: FontWeight.w700)),
+                      ),
+                    FilledButton(
+                      onPressed: _busy ? null : _login,
+                      child: Text(_busy ? 'جاري الدخول...' : 'تسجيل الدخول'),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _password,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'كلمة المرور',
-                  filled: true,
-                  fillColor: AliraColors.paper,
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 10),
-                Text(_error!, style: const TextStyle(color: AliraColors.red)),
-              ],
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _busy ? null : _login,
-                child: Text(_busy ? 'جاري الدخول...' : 'تسجيل الدخول'),
               ),
             ],
           ),
@@ -541,6 +975,7 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
           title: 'المسارات',
           hint: 'تطبيق المندوب · الزيارات والتحصيل',
         ),
+        _queueBar(),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.all(12),
@@ -599,7 +1034,7 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: AliraColors.line),
                     ),
-                    child: const Text('20 سبتمبر'),
+                    child: Text(_routeDateLabel(routes.date)),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -802,163 +1237,147 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     );
   }
 
-  Widget _invoicePage() {
-    final query = _productSearch.text.trim();
-    final products = AliraCatalog.products.where((item) {
-      if (_familyId != null && item.categoryId != _familyId) return false;
-      return query.isEmpty || item.name.contains(query);
+  static const _priceOrder = ['wholesale', 'retail', 'representative', 'cost'];
+
+  List<String> get _orderedPrices {
+    return [
+      for (final key in _priceOrder)
+        if (_allowedPrices.contains(key)) key,
+    ];
+  }
+
+  void _changeCart(String id, int delta) {
+    if (delta > 0 && _apiPriceType == null) {
+      setState(() => _error = 'حدد نوع سعر القائمة');
+      return;
+    }
+    setState(() {
+      final next = (_cart[id] ?? 0) + delta;
+      if (next <= 0) {
+        _cart.remove(id);
+      } else {
+        _cart[id] = next;
+      }
+      _error = null;
+      _syncPaid();
     });
+  }
+
+  Widget _invoicePage() {
+    final products = AliraCatalog.visible(
+      familyId: _productSearch.text.trim().isEmpty ? _familyId : null,
+      query: _productSearch.text,
+    );
     return Column(
       children: [
-        AliraStatusBar(title: 'فاتورة جديدة', onBack: _pop),
-        Expanded(
+        _invoiceTopBar(),
+        _queueBar(),
+        _orderHeader(),
+        _ceilingBanner(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: TextField(
+            controller: _productSearch,
+            onChanged: (value) {
+              setState(() {
+                if (value.trim().isNotEmpty) _familyId = null;
+              });
+              _scheduleProducts();
+            },
+            decoration: const InputDecoration(
+              hintText: 'ابحث بالاسم',
+              filled: true,
+              fillColor: AliraColors.paper,
+              prefixIcon: Icon(Icons.search, size: 20, color: AliraColors.teal),
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 52,
           child: ListView(
-            padding: const EdgeInsets.all(12),
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
             children: [
-              TextField(
-                controller: _productSearch,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  hintText: 'بحث المواد',
-                  filled: true,
-                  fillColor: AliraColors.paper,
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (_allowedPrices.length > 1) ...[
-                const Text('سعر هذه القائمة', style: TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final key in _allowedPrices)
-                      ChoiceChip(
-                        label: Text(_priceLabels[key] ?? key),
-                        selected: _invoicePrice == key,
-                        onSelected: (_) => setState(() {
-                          _invoicePrice = key;
-                          _syncPaid();
-                        }),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-              ],
-              SizedBox(
-                height: 40,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    for (final family in AliraCatalog.families)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: ChoiceChip(
-                          label: Text(family.name),
-                          selected: _familyId == family.id,
-                          onSelected: (_) => setState(() => _familyId = family.id),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              if (_familyId == null)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('اختر عائلة المواد'),
-                ),
-              if (_familyId != null) ...[
-              for (final product in products)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: SizedBox(
-                          width: 52,
-                          height: 52,
-                          child: aliraProductImage(
-                            product.imageUrl,
-                            fallback: Container(
-                              color: const Color(0xFF6B7788),
-                              alignment: Alignment.center,
-                              child: Text(
-                                product.name.isEmpty ? '' : product.name.substring(0, 1),
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                            Text(
-                              '${_unitPrice(product)} · ${product.unit}',
-                              style: const TextStyle(fontSize: 12, color: AliraColors.muted),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        padding: EdgeInsets.zero,
-                        onPressed: () {
-                          setState(() {
-                            final next = (_cart[product.id] ?? 0) - 1;
-                            if (next <= 0) {
-                              _cart.remove(product.id);
-                            } else {
-                              _cart[product.id] = next;
-                            }
-                            _syncPaid();
-                          });
-                        },
-                        icon: const Icon(Icons.remove, size: 18),
-                      ),
-                      Text('${_cart[product.id] ?? 0}'),
-                      IconButton(
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        padding: EdgeInsets.zero,
-                        onPressed: () {
-                          setState(() {
-                            _cart[product.id] = (_cart[product.id] ?? 0) + 1;
-                            _syncPaid();
-                          });
-                        },
-                        icon: const Icon(Icons.add, size: 18),
-                      ),
-                    ],
-                  ),
-                ),
-              ListPagination(
-                page: AliraCatalog.page,
-                hasNextPage: AliraCatalog.hasNext,
-                pageSize: 20,
-                loading: AliraCatalog.loading,
-                onPageChanged: (page) async {
-                  await AliraCatalog.openPage(page, agent: true);
-                  if (mounted) setState(() {});
+              AliraFilterChip(
+                label: 'الكل',
+                selected: _familyId == null,
+                onTap: () {
+                  setState(() => _familyId = null);
+                  AliraCatalog.load(agent: true, query: _productSearch.text).then((_) {
+                    if (mounted) setState(() {});
+                  });
                 },
               ),
-              ],
+              for (final family in AliraCatalog.families)
+                AliraFilterChip(
+                  label: family.name,
+                  selected: _familyId == family.id,
+                  onTap: () {
+                    setState(() {
+                      _familyId = _familyId == family.id ? null : family.id;
+                      if (_familyId != null) _productSearch.clear();
+                    });
+                    AliraCatalog.load(
+                      agent: true,
+                      query: _productSearch.text,
+                      familyId: _productSearch.text.trim().isEmpty ? _familyId : null,
+                    ).then((_) {
+                      if (mounted) setState(() {});
+                    });
+                  },
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: products.isEmpty
+              ? Center(
+                  child: Text(
+                    _productSearch.text.trim().isEmpty
+                        ? 'لا توجد مواد في هذه العائلة'
+                        : 'لا توجد مادة بهذا الاسم',
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                  children: [
+                    for (final product in products) _agentProductCard(product),
+                  ],
+                ),
+        ),
+        if (AliraCatalog.hasNext)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+            child: OutlinedButton(
+              onPressed: AliraCatalog.loading ? null : _loadMoreProducts,
+              child: Text(AliraCatalog.loading ? 'جارٍ التحميل...' : 'تحميل المزيد'),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               if (_cart.isEmpty)
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
+                  padding: EdgeInsets.only(bottom: 8),
                   child: Text('أضف مواد إلى السلة'),
                 ),
-              const SizedBox(height: 8),
               const Text('الدفع', style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  _payChip('آجل', 'CREDIT'),
-                  _payChip('نقدي', 'CASH'),
-                  _payChip('جزئي', 'PARTIAL'),
-                ],
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: AliraColors.capsule,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  children: [
+                    _payChip('نقداً', 'CASH'),
+                    _payChip('آجل', 'CREDIT'),
+                    _payChip('جزئي', 'PARTIAL'),
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -977,45 +1396,357 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(_error!, style: const TextStyle(color: AliraColors.red)),
                 ),
-              const SizedBox(height: 8),
-              Text('المجموع IQD ${aliraMoney(_cartTotal)}', style: const TextStyle(fontWeight: FontWeight.w700)),
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: FilledButton(
-            onPressed: _sendSale,
-            child: const Text('إرسال للمكتب'),
-          ),
-        ),
+        _invoiceSendBar(),
       ],
+    );
+  }
+
+  Widget _invoiceTopBar() {
+    final hint = _invoiceOfficeHint();
+    return Container(
+      color: AliraColors.paper,
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+      child: Row(
+        children: [
+          Material(
+            color: const Color(0xFFF1F4F7),
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              onTap: _pop,
+              borderRadius: BorderRadius.circular(14),
+              child: const SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(Icons.arrow_forward_rounded, color: AliraColors.text),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'فاتورة جديدة',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+                if (hint.isNotEmpty)
+                  Text(
+                    hint,
+                    style: const TextStyle(fontSize: 12, color: AliraColors.muted),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _invoiceOfficeHint() {
+    final link = _account?['link'];
+    if (link is Map) {
+      final office = '${link['office_name'] ?? ''}'.trim();
+      if (office.isNotEmpty) return office;
+    }
+    final company = _account?['company'];
+    if (company is Map) {
+      final name = '${company['name'] ?? ''}'.trim();
+      if (name.isNotEmpty) return name;
+    }
+    return '';
+  }
+
+  Widget _agentProductCard(AliraProduct product) {
+    final quantity = _cart[product.id] ?? 0;
+    final wash = _cardWash(product.id);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AliraColors.paper,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 156,
+            child: ColoredBox(
+              color: wash,
+              child: quantity > 0
+                  ? Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+                        decoration: BoxDecoration(
+                          color: AliraColors.teal,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          '$quantity في السلة',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    )
+                  : aliraProductImage(
+                      product.imageUrl,
+                      fallback: const SizedBox.expand(),
+                    ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  product.name,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  product.categoryName,
+                  style: const TextStyle(fontSize: 12, color: AliraColors.muted),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Text(
+                      'IQD ${aliraMoney(_unitPrice(product))}',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                    const Spacer(),
+                    _agentQty(product.id, quantity),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _cardWash(String id) {
+    const washes = [
+      Color(0xFFE6D7C3),
+      Color(0xFFF3C7B8),
+      Color(0xFFD9E6DE),
+      Color(0xFFF6E3C8),
+      Color(0xFFE4D8C8),
+    ];
+    return washes[id.hashCode.abs() % washes.length];
+  }
+
+  Widget _agentQty(String id, int quantity) {
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _qtySquare(Icons.add, () => _changeCart(id, 1)),
+          const SizedBox(width: 8),
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F7F8),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              quantity == 0 ? '·' : '$quantity',
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _qtySquare(
+            Icons.remove,
+            quantity == 0 ? null : () => _changeCart(id, -1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _qtySquare(IconData icon, VoidCallback? onTap) {
+    return Material(
+      color: const Color(0xFFE7EEF2),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(icon, size: 18, color: onTap == null ? AliraColors.muted : AliraColors.teal),
+        ),
+      ),
+    );
+  }
+
+  Widget _invoiceSendBar() {
+    final count = _cart.values.fold<int>(0, (sum, quantity) => sum + quantity);
+    return Container(
+      color: AliraColors.paper,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'IQD ${aliraMoney(_cartTotal)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+                Text(
+                  '$count مواد',
+                  style: const TextStyle(fontSize: 12, color: AliraColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: _busy || _blockSend ? null : _sendSale,
+            style: FilledButton.styleFrom(
+              backgroundColor: AliraColors.teal,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(64, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            child: const Text('إرسال للمكتب', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _orderHeader() {
+    final customers = _routes?.customers ?? const <AliraCustomer>[];
+    final selectedId = customers.any((customer) => customer.id == _customer?.id) ? _customer?.id : null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AliraSoftCard(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                isExpanded: true,
+                hint: const Text('اختر الزبون'),
+                value: selectedId,
+                items: [
+                  for (final customer in customers)
+                    DropdownMenuItem(value: customer.id, child: Text(customer.name)),
+                ],
+                onChanged: (id) {
+                  if (id == null) return;
+                  setState(() => _customer = customers.firstWhere((customer) => customer.id == id));
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 42,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final key in _orderedPrices)
+                  AliraFilterChip(
+                    label: _priceLabels[key] ?? key,
+                    selected: _invoicePrice == key,
+                    onTap: () => setState(() {
+                      _invoicePrice = key;
+                      _error = null;
+                      _syncPaid();
+                    }),
+                  ),
+              ],
+            ),
+          ),
+          if (_apiPriceType == null)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                'حدد نوع السعر قبل فتح السلة',
+                style: TextStyle(color: AliraColors.red, fontWeight: FontWeight.w700, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _payChip(String label, String value) {
     final selected = _payment == value;
     return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: OutlinedButton(
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: selected ? AliraColors.green : AliraColors.line, width: selected ? 2 : 1),
+      child: GestureDetector(
+        onTap: () => setState(() {
+          _payment = value;
+          _syncPaid();
+        }),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? AliraColors.teal : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
           ),
-          onPressed: () {
-            setState(() {
-              _payment = value;
-              _syncPaid();
-            });
-          },
-          child: Text(label),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: selected ? Colors.white : AliraColors.text,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
       ),
     );
   }
 
+  AliraAging _liveAging(AliraCustomer customer) {
+    final due = customer.balance;
+    final invoices = due == 0
+        ? <AliraInvoice>[]
+        : [
+            AliraInvoice(
+              id: 'due-${customer.id}',
+              number: 'ذمة',
+              customerId: customer.id,
+              type: 'BALANCE',
+              date: _blankRoutes().date,
+              amount: due.abs(),
+              remaining: due.abs(),
+              ageDays: customer.agingDays,
+              overdue: due > 0,
+            ),
+          ];
+    return AliraAging(
+      customer: customer,
+      overdueCount: due > 0 ? 1 : 0,
+      allowedCount: 0,
+      invoices: invoices,
+    );
+  }
+
   Widget _agingPage() {
-    final report = _mock.getAging(_customer!.id);
+    final report = AliraCatalog.forceMock ? _mock.getAging(_customer!.id) : _liveAging(_customer!);
     final total = report.invoices.fold<int>(0, (sum, item) => sum + item.remaining);
     return Column(
       children: [
@@ -1065,7 +1796,17 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
   }
 
   Widget _statementPage() {
-    final statement = _mock.getStatement(_customer!.id);
+    final statement = AliraCatalog.forceMock
+        ? _mock.getStatement(_customer!.id)
+        : (_statements[_customer!.id] ??
+            AliraStatement(
+              customerId: _customer!.id,
+              debit: 0,
+              credit: 0,
+              balance: _customer!.balance,
+              lastMovementDate: null,
+              entries: const [],
+            ));
     return Column(
       children: [
         AliraStatusBar(title: 'كشف حساب', onBack: _pop),
@@ -1153,6 +1894,7 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
             padding: const EdgeInsets.all(12),
             children: [
               if (_busy) const LinearProgressIndicator(),
+              _ceilingBanner(),
               if (_error != null)
                 Text(_error!, style: const TextStyle(color: AliraColors.red)),
               if (company != null) ...[
@@ -1248,11 +1990,5 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
         ],
       ),
     );
-  }
-
-  int _asInt(Object? value) {
-    if (value is int) return value;
-    if (value is num) return value.round();
-    return int.tryParse('$value') ?? 0;
   }
 }

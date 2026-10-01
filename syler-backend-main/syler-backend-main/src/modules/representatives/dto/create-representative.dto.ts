@@ -55,4 +55,13 @@ export class CreateRepresentativeDto {
   @IsOptional()
   @IsString()
   location_url?: string;
+
+  @ApiPropertyOptional({
+    example: 0,
+    description: 'سقف الذمة بالدينار. 0 يعني بدون سقف',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  max_debt_limit?: number;
 }

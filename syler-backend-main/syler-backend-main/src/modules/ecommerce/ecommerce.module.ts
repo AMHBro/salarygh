@@ -10,6 +10,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import {
     DirectSalesModule,
 } from '../direct-sales/direct-sales.module';
+import { FloorModule } from '../floor/floor.module';
 
 /**
  * ============================================================
@@ -110,6 +111,7 @@ import {
      */
     imports: [
         DirectSalesModule,
+        FloorModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
             inject: [ConfigService],

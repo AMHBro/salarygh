@@ -72,8 +72,10 @@ export class StoreCatalogController {
         @Query('audience') audience?: string,
         @Query('page') page?: string,
         @Query('limit') limit?: string,
+        @Query('search') search?: string,
+        @Query('category_id') categoryId?: string,
     ) {
-        return this.catalogService.getWarehouse(audience, page, limit);
+        return this.catalogService.getWarehouse(audience, page, limit, search, categoryId);
     }
 
     @Get('categories')

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/auth/auth_user.dart';
 import '../../../core/di/app_services.dart';
 import '../../../core/paging/list_page.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../inventory/models/stock_movement_model.dart';
 import '../../products/models/product_model.dart';
+import '../data/warehouses_local_repository.dart';
 import '../models/warehouse_model.dart';
 import 'warehouse_details_screen.dart';
 import 'warehouse_approvals_screen.dart';
@@ -28,6 +30,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
   List<WarehouseModel> _warehouses = [];
   List<ProductModel> _products = [];
   List<_MovementViewModel> _movements = [];
+  Map<String, double> _stockQty = {};
 
   final Map<String, _WarehouseStats> _warehouseStats = {};
 
@@ -37,6 +40,8 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
   bool _isLoading = true;
   int _movementPage = 1;
   int _movementTotal = 0;
+  List<WarehouseDeleteRequest> _deleteRequests = [];
+  bool _canApproveDeletes = false;
 
   @override
   void initState() {
@@ -222,13 +227,28 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
         },
       ).toList();
 
+      final deleteRequests =
+          await _warehousesRepository.listPendingWarehouseDeletes();
+      final session = await AppServices.authStorage.readSession();
+
       if (!mounted) {
         return;
       }
 
       setState(() {
+        _deleteRequests = deleteRequests;
+        _canApproveDeletes = canApproveWarehouseDelete(
+          resolveSessionRole(
+            storedRole: session?.user.role,
+            accessToken: session?.accessToken,
+          ),
+        );
         _warehouses = warehouses;
         _products = products;
+        _stockQty = {
+          for (final balance in balanceRows)
+            '${balance.warehouseId}|${balance.variantId}': balance.quantity,
+        };
         _movements = movements;
         _movementTotal = movementTotal;
 
@@ -329,6 +349,33 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
     }
 
     return choices;
+  }
+
+  double _availableInWarehouse(String variantId, String warehouseId) {
+    return _stockQty['$warehouseId|$variantId'] ?? 0;
+  }
+
+  List<_InventoryVariantChoice> _materialsInWarehouse(
+    String warehouseId,
+    String query,
+  ) {
+    final text = query.trim();
+    return _inventoryVariantChoices.where((choice) {
+      if (_availableInWarehouse(choice.variantId, warehouseId) <= 0) {
+        return false;
+      }
+      if (text.isEmpty) {
+        return true;
+      }
+      return choice.label.contains(text) || choice.barcode.contains(text);
+    }).take(8).toList();
+  }
+
+  String _qtyLabel(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toInt().toString();
+    }
+    return value.toStringAsFixed(2);
   }
 
   String _variantDisplayName({
@@ -461,6 +508,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
               const SizedBox(
                 height: 22,
               ),
+              _buildDeleteRequests(),
               _buildWarehousesSection(),
               const SizedBox(
                 height: 22,
@@ -471,6 +519,142 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildDeleteRequests() {
+    if (_deleteRequests.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF4E5),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.subtleBorderColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'طلبات حذف المخازن',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _canApproveDeletes
+                  ? 'الموافقة تحذف المخزن من هذه الحاسبة فقط.'
+                  : 'بانتظار موافقة المدير على الحاسبة الأساسية.',
+              style: const TextStyle(
+                fontSize: 11.5,
+                color: AppTheme.secondaryTextColor,
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final request in _deleteRequests)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${request.warehouseName} · ${request.requestedBy} · ${request.sourceName}',
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
+                    ),
+                    if (_canApproveDeletes) ...[
+                      TextButton(
+                        onPressed: () => _reviewDeleteRequest(
+                          request,
+                          approve: false,
+                        ),
+                        child: const Text('رفض'),
+                      ),
+                      const SizedBox(width: 6),
+                      FilledButton(
+                        onPressed: () => _reviewDeleteRequest(
+                          request,
+                          approve: true,
+                        ),
+                        child: const Text('موافقة المدير'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _requestWarehouseDelete(WarehouseModel warehouse) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('حذف المخزن'),
+            content: Text(
+              'حذف «${warehouse.name}» من هذه الحاسبة؟ المخزن لازم يكون فاضي ومن غير مخازن فرعية.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('حذف'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    try {
+      final message = await _warehousesRepository.requestWarehouseDelete(
+        warehouse,
+      );
+      await _loadData();
+      _showMessage(message);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showMessage(_errorMessage(error));
+    }
+  }
+
+  Future<void> _reviewDeleteRequest(
+    WarehouseDeleteRequest request, {
+    required bool approve,
+  }) async {
+    try {
+      if (approve) {
+        await _warehousesRepository.approveWarehouseDelete(request.id);
+        _showMessage('حُذف المخزن من هذه الحاسبة.');
+      } else {
+        await _warehousesRepository.rejectWarehouseDelete(request.id);
+        _showMessage('رُفض طلب الحذف.');
+      }
+      await _loadData();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showMessage(_errorMessage(error));
+    }
   }
 
   // ===========================================================================
@@ -777,6 +961,14 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                     _toggleWarehouse(
                       warehouse,
                     );
+                  },
+                  onSubmitForApproval: () {
+                    _submitWarehouseForApproval(
+                      warehouse,
+                    );
+                  },
+                  onRequestDelete: () {
+                    _requestWarehouseDelete(warehouse);
                   },
                 );
               },
@@ -1763,18 +1955,48 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
   // TOGGLE WAREHOUSE
   // ===========================================================================
 
-  Future<void> _toggleWarehouse(
+  Future<void> _submitWarehouseForApproval(
       WarehouseModel warehouse,
       ) async {
-    if (warehouse.isSynced && !warehouse.isActive) {
+    final serverId = warehouse.serverId?.trim() ?? '';
+    if (!warehouse.isSynced || serverId.isEmpty) {
       _showMessage(
-        'لا يمكن إعادة تفعيل المخزن حالياً لأن '
-            'واجهة إعادة التفعيل غير متوفرة في الـBackend.',
+        'زامن المخزن أولاً حتى يصير له رقم على السيرفر.',
       );
-
       return;
     }
 
+    try {
+      final remoteStatus =
+          await AppServices.warehouseApprovalsRepository.activateWarehouse(
+        warehouseServerId: serverId,
+      );
+      await _warehousesRepository.saveServerSnapshot(
+        localId: warehouse.id,
+        serverId: serverId,
+        status: remoteStatus,
+        type: warehouse.type,
+      );
+      await _loadData();
+      _showMessage(
+        'تم اعتماد «${warehouse.name}» وتفعيله. '
+        'تقدر توافق طلبات المتجر والمندوب عليه.',
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showMessage(
+        _errorMessage(
+          error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _toggleWarehouse(
+      WarehouseModel warehouse,
+      ) async {
     try {
       await _warehousesRepository.setActive(
         warehouse: warehouse,
@@ -2032,7 +2254,9 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
 
     String toWarehouseId = _warehouses[1].id;
 
-    String selectedVariantId = choices.first.variantId;
+    String selectedVariantId = '';
+
+    final productController = TextEditingController();
 
     final quantityController = TextEditingController();
 
@@ -2054,6 +2278,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                 ),
                 content: SizedBox(
                   width: 580,
+                  child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -2080,6 +2305,14 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                                 setDialogState(
                                       () {
                                     fromWarehouseId = value;
+                                    if (_availableInWarehouse(
+                                          selectedVariantId,
+                                          value,
+                                        ) <=
+                                        0) {
+                                      selectedVariantId = '';
+                                      productController.clear();
+                                    }
                                   },
                                 );
                               },
@@ -2128,30 +2361,34 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                       const SizedBox(
                         height: 16,
                       ),
-                      _DialogDropdown(
-                        title: 'المنتج / الخيار',
-                        value: selectedVariantId,
-                        items: choices
-                            .map(
-                              (choice) => choice.variantId,
-                        )
-                            .toList(),
-                        labels: {
-                          for (final choice in choices)
-                            choice.variantId: choice.barcode.trim().isEmpty
-                                ? choice.label
-                                : '${choice.label} — ${choice.barcode}',
-                        },
+                      TextField(
+                        controller: productController,
+                        textAlign: TextAlign.right,
+                        decoration: const InputDecoration(
+                          labelText: 'المادة',
+                          hintText: 'اكتب اسم المادة أو الباركود',
+                        ),
                         onChanged: (value) {
-                          if (value == null) {
-                            return;
-                          }
-
-                          setDialogState(
-                                () {
-                              selectedVariantId = value;
-                            },
-                          );
+                          setDialogState(() {
+                            final selected = _inventoryVariantChoices.where(
+                              (choice) => choice.variantId == selectedVariantId,
+                            );
+                            if (selected.isEmpty || selected.first.label != value) {
+                              selectedVariantId = '';
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _buildTransferMaterials(
+                        warehouseId: fromWarehouseId,
+                        query: productController.text,
+                        selectedVariantId: selectedVariantId,
+                        onSelect: (choice) {
+                          setDialogState(() {
+                            selectedVariantId = choice.variantId;
+                            productController.text = choice.label;
+                          });
                         },
                       ),
                       const SizedBox(
@@ -2171,6 +2408,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                         hint: 'سبب التحويل أو ملاحظة',
                       ),
                     ],
+                  ),
                   ),
                 ),
                 actions: [
@@ -2193,11 +2431,29 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                       ) ??
                           0;
 
+                      if (selectedVariantId.isEmpty) {
+                        _showMessage(
+                          'اختر مادة من مخزن المصدر.',
+                        );
+                        return;
+                      }
+
                       if (quantity <= 0) {
                         _showMessage(
                           'أدخل كمية صحيحة.',
                         );
 
+                        return;
+                      }
+
+                      final available = _availableInWarehouse(
+                        selectedVariantId,
+                        fromWarehouseId,
+                      );
+                      if (quantity > available) {
+                        _showMessage(
+                          'المتوفر في هذا المخزن ${_qtyLabel(available)} فقط.',
+                        );
                         return;
                       }
 
@@ -2243,8 +2499,54 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
       },
     );
 
+    productController.dispose();
     quantityController.dispose();
     noteController.dispose();
+  }
+
+  Widget _buildTransferMaterials({
+    required String warehouseId,
+    required String query,
+    required String selectedVariantId,
+    required ValueChanged<_InventoryVariantChoice> onSelect,
+  }) {
+    final materials = _materialsInWarehouse(warehouseId, query);
+    if (materials.isEmpty) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Text(
+          query.trim().isEmpty
+              ? 'هذا المخزن لا يحتوي مواد متوفرة.'
+              : 'لا توجد مادة متوفرة بهذا الاسم في مخزن المصدر.',
+          style: const TextStyle(
+            fontSize: 12.5,
+            color: AppTheme.secondaryTextColor,
+          ),
+        ),
+      );
+    }
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 180),
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          for (final choice in materials)
+            ListTile(
+              dense: true,
+              selected: choice.variantId == selectedVariantId,
+              title: Text(
+                choice.label,
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              trailing: Text(
+                'متوفر ${_qtyLabel(_availableInWarehouse(choice.variantId, warehouseId))}',
+              ),
+              onTap: () => onSelect(choice),
+            ),
+        ],
+      ),
+    );
   }
 
   // ===========================================================================
@@ -2521,6 +2823,8 @@ class _WarehouseCard extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onToggleActive;
+  final VoidCallback onSubmitForApproval;
+  final VoidCallback onRequestDelete;
 
   const _WarehouseCard({
     required this.warehouse,
@@ -2529,6 +2833,8 @@ class _WarehouseCard extends StatelessWidget {
     required this.onOpen,
     required this.onEdit,
     required this.onToggleActive,
+    required this.onSubmitForApproval,
+    required this.onRequestDelete,
   });
 
   @override
@@ -2640,21 +2946,44 @@ class _WarehouseCard extends StatelessWidget {
                   if (value == 'toggle') {
                     onToggleActive();
                   }
+
+                  if (value == 'submit') {
+                    onSubmitForApproval();
+                  }
+
+                  if (value == 'delete') {
+                    onRequestDelete();
+                  }
                 },
-                itemBuilder: (context) => [
+                itemBuilder: (context) {
+                  final status = warehouse.status.trim().toUpperCase();
+                  final canApprove = warehouse.isSynced && status != 'ACTIVE';
+                  return [
                   const PopupMenuItem(
                     value: 'edit',
                     child: Text(
                       'تعديل',
                     ),
                   ),
+                  if (canApprove)
+                    const PopupMenuItem(
+                      value: 'submit',
+                      child: Text(
+                        'اعتماد وتفعيل',
+                      ),
+                    ),
                   PopupMenuItem(
                     value: 'toggle',
                     child: Text(
                       warehouse.isActive ? 'إيقاف المخزن' : 'تفعيل المخزن',
                     ),
                   ),
-                ],
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('حذف المخزن'),
+                  ),
+                ];
+                },
                 icon: Icon(
                   Icons.more_horiz_rounded,
                   color: dark ? Colors.white : AppTheme.secondaryTextColor,

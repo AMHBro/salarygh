@@ -398,11 +398,11 @@ class _ArchiveScreenState extends State<ArchiveScreen>
       lines: [
         'رقم القائمة: ${purchase.invoiceNumber}',
       ],
-      totals: [
-        'الكلي: ${purchase.total.toStringAsFixed(0)}',
-        'المبلغ: ${purchase.paid.toStringAsFixed(0)}',
-        'المتبقي: ${purchase.remaining.toStringAsFixed(0)}',
-      ],
+      grandTotal: purchase.total,
+      paidIqd: purchase.paid,
+      remainingIqd: purchase.remaining,
+      paidIqdLabel: 'المبلغ',
+      remainingIqdLabel: 'المتبقي',
     );
     await showDialog<void>(
       context: context,

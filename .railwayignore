@@ -1,0 +1,12 @@
+Archive/
+lan-master/
+.git/
+scripts/
+**/node_modules
+**/dist
+**/pgdata
+**/pgdata-utf8
+**/backups
+**/.env
+**/*.sqlite
+**/*.log

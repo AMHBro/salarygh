@@ -7,9 +7,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class ServerEndpoint {
   static const defaultLan = 'http://127.0.0.1:3000/api/v1';
 
+  static const defaultInternet =
+      'https://salarygh-production.up.railway.app/api/v1';
+
   static const _lanKey = 'server_lan_base';
   static const _internetKey = 'server_internet_base';
   static const _routeKey = 'server_route';
+  static const _publicOfficeKey = 'office_on_public_server';
 
   final FlutterSecureStorage _storage;
 
@@ -25,7 +29,7 @@ class ServerEndpoint {
     return ServerRoute(
       useInternet: route == 'internet',
       lanBase: normalizeServerBase(lan) ?? defaultLan,
-      internetBase: normalizeServerBase(internet),
+      internetBase: normalizeServerBase(internet) ?? defaultInternet,
     );
   }
 
@@ -41,19 +45,37 @@ class ServerEndpoint {
     await _storage.write(key: _internetKey, value: internet);
   }
 
-  /// عنوان هذه الحاسبة: محلي أو إنترنت حسب اختيارها.
+  /// يثبت المكتب على السيرفر العام مرة واحدة.
+  /// بعد ذلك يبقى اختيار «على الراوتر» من الإعدادات سارياً.
+  Future<void> ensurePublicOffice() async {
+    final applied = await _storage.read(key: _publicOfficeKey);
+    if (applied == '1') {
+      return;
+    }
+    final current = await read();
+    await save(
+      ServerRoute(
+        useInternet: true,
+        lanBase: current.lanBase,
+        internetBase: current.internetBase ?? defaultInternet,
+      ),
+    );
+    await _storage.write(key: _publicOfficeKey, value: '1');
+  }
+
+  /// عنوان المكتب: عبر الإنترنت يشمل سيرفر Railway العام.
   Future<String> activeBaseUrl() async {
     final route = await read();
-    if (route.useInternet && route.internetBase != null) {
-      return route.internetBase!;
+    if (route.useInternet) {
+      return route.internetBase ?? defaultInternet;
     }
     return route.lanBase;
   }
 
-  /// المتجر والمندوب: عنوان الإنترنت، وإن لم يُضبط فعنوان الراوتر.
+  /// المتجر والمندوب يتصلان بعنوان الإنترنت.
   Future<String> publicBaseUrl() async {
     final route = await read();
-    return route.internetBase ?? route.lanBase;
+    return route.internetBase ?? defaultInternet;
   }
 }
 
@@ -90,11 +112,12 @@ String? normalizeServerBase(String? raw) {
   }
 
   final port = uri.hasPort ? ':${uri.port}' : '';
-  var path = uri.path;
+  var path = uri.path.replaceAll(RegExp(r'/{2,}'), '/');
+  if (path.length > 1 && path.endsWith('/')) {
+    path = path.substring(0, path.length - 1);
+  }
   if (path.isEmpty || path == '/') {
     path = '/api/v1';
-  } else if (path.endsWith('/')) {
-    path = path.substring(0, path.length - 1);
   }
   if (!path.endsWith('/api/v1')) {
     path = '$path/api/v1';

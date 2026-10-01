@@ -184,6 +184,37 @@ export class ProductsService {
         };
     }
 
+    async imagePage(pageRaw?: string) {
+        const page = Math.max(1, Number(pageRaw) || 1);
+        const limit = 30;
+        const skip = (page - 1) * limit;
+        const where = { image_url: { not: null } };
+        const [total, rows] = await Promise.all([
+            this.prisma.products.count({ where }),
+            this.prisma.products.findMany({
+                where,
+                select: {
+                    id: true,
+                    image_url: true,
+                    barcode: true,
+                    sku: true,
+                },
+                orderBy: { updated_at: 'desc' },
+                skip,
+                take: limit,
+            }),
+        ]);
+        return {
+            data: rows,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.max(1, Math.ceil(total / limit)),
+            },
+        };
+    }
+
     // ─── تفاصيل منتج واحد ────────────────────────────────────────────────────
     async findOne(id: string) {
         const product = await this.prisma.products.findUnique({
@@ -248,6 +279,15 @@ export class ProductsService {
                 where: { barcode: dto.barcode, NOT: { id } },
             });
             if (existing) throw new BadRequestException('الباركود مستخدم مسبقاً');
+        }
+
+        if (this.hasFullPricing(dto.pricing)) {
+            this.validatePricing(dto.pricing);
+            await this.applyListedPrices(
+                id,
+                dto.base_unit_id || current.base_unit_id,
+                dto.pricing,
+            );
         }
 
         return this.prisma.products.update({
@@ -319,6 +359,54 @@ export class ProductsService {
     }
 
     // ─── Helpers خاصة ────────────────────────────────────────────────────────
+
+    private hasFullPricing(pricing: any) {
+        return pricing
+            && [pricing.cost_price, pricing.rep_price, pricing.wholesale_price, pricing.retail_price]
+                .every((value) => typeof value === 'number');
+    }
+
+    private async applyListedPrices(productId: string, unitId: string, pricing: any) {
+        const variants = await this.prisma.product_variants.findMany({
+            where: { product_id: productId },
+            select: { id: true },
+        });
+        await this.prisma.$transaction(async (tx) => {
+            for (const variant of variants) {
+                await this.upsertListedPrice(tx, variant.id, unitId, price_type_enum.COST, pricing.cost_price);
+                await this.upsertListedPrice(tx, variant.id, unitId, price_type_enum.REP, pricing.rep_price);
+                await this.upsertListedPrice(tx, variant.id, unitId, price_type_enum.WHOLESALE, pricing.wholesale_price);
+                await this.upsertListedPrice(tx, variant.id, unitId, price_type_enum.RETAIL, pricing.retail_price);
+                await tx.product_variants.update({
+                    where: { id: variant.id },
+                    data: {
+                        weighted_avg_cost: pricing.cost_price,
+                        last_purchase_price: pricing.cost_price,
+                    },
+                });
+            }
+        });
+    }
+
+    private async upsertListedPrice(tx: any, variantId: string, unitId: string, priceType: price_type_enum, price: number) {
+        await tx.product_prices.upsert({
+            where: {
+                variant_id_price_type_unit_id: {
+                    variant_id: variantId,
+                    price_type: priceType,
+                    unit_id: unitId,
+                },
+            },
+            update: { price, is_active: true, updated_at: new Date() },
+            create: {
+                variant_id: variantId,
+                unit_id: unitId,
+                price_type: priceType,
+                price,
+                is_active: true,
+            },
+        });
+    }
 
     // التحقق من قاعدة (BR-PRD-007): لا بيع بأقل من الكلفة
     private validatePricing(pricing: any) {

@@ -619,7 +619,7 @@ class ProductsSyncRemoteGateway
       }
     }
 
-    return {
+    final payload = {
       'name_ar':
       product.name.trim(),
 
@@ -666,7 +666,7 @@ class ProductsSyncRemoteGateway
       product.hasSerial,
 
       'image_url':
-      _nullableString(
+      _httpImageUrl(
         product.imageUrl,
       ),
 
@@ -684,6 +684,10 @@ class ProductsSyncRemoteGateway
       'variants':
       variantsPayload,
     };
+    if (payload['image_url'] == null) {
+      payload.remove('image_url');
+    }
+    return payload;
   }
 
   // ===========================================================================
@@ -1458,8 +1462,37 @@ class ProductsSyncRemoteGateway
         debugPrint(
           '[PRODUCT PULL] Skipped $serverId because local changes are pending.',
         );
-
+        await _writeProductImage(
+          localProduct.id,
+          serverProduct['image_url'],
+        );
         return;
+      }
+    }
+
+    if (localProduct == null) {
+      final linked = await _findLocalProductForPhoto(
+        serverId,
+        serverProduct,
+      );
+      if (linked != null) {
+        await _writeProductImage(
+          linked.id,
+          serverProduct['image_url'],
+        );
+        if (await _productHasUnsyncedChanges(linked.id)) {
+          return;
+        }
+        if ((linked.serverId ?? '').trim().isEmpty) {
+          await (database.update(database.products)
+                ..where((table) => table.id.equals(linked.id)))
+              .write(
+            ProductsCompanion(
+              serverId: Value(serverId),
+            ),
+          );
+        }
+        localProduct = linked;
       }
     }
 
@@ -2185,6 +2218,81 @@ class ProductsSyncRemoteGateway
         .getSingleOrNull();
   }
 
+  Future<void> _writeProductImage(
+    String localProductId,
+    dynamic image,
+  ) async {
+    final url = _httpImageUrl(image);
+    if (url == null) {
+      return;
+    }
+    await (database.update(database.products)
+          ..where((table) => table.id.equals(localProductId)))
+        .write(
+      ProductsCompanion(
+        imageUrl: Value(url),
+      ),
+    );
+  }
+
+  Future<Product?> _findLocalProductForPhoto(
+    String serverId,
+    Map<String, dynamic> serverProduct,
+  ) async {
+    final link = await database.customSelect(
+      '''
+SELECT local_product_id
+FROM store_catalog_links
+WHERE remote_product_id = ?
+''',
+      variables: [Variable.withString(serverId)],
+    ).getSingleOrNull();
+    final linkedId = link?.data['local_product_id']?.toString().trim() ?? '';
+    if (linkedId.isNotEmpty) {
+      final row = await (database.select(database.products)
+            ..where((table) => table.id.equals(linkedId)))
+          .getSingleOrNull();
+      if (row != null && row.deletedAt == null) {
+        return row;
+      }
+    }
+
+    final barcode = _nullableString(serverProduct['barcode']);
+    if (barcode != null) {
+      final rows = await (database.select(database.products)
+            ..where(
+              (table) =>
+                  table.barcode.equals(barcode) & table.deletedAt.isNull(),
+            ))
+          .get();
+      final open = rows.where((row) {
+        final current = row.serverId?.trim() ?? '';
+        return current.isEmpty || current == serverId;
+      }).toList();
+      if (open.length == 1) {
+        return open.first;
+      }
+    }
+
+    final sku = _nullableString(serverProduct['sku']);
+    if (sku != null) {
+      final rows = await (database.select(database.products)
+            ..where(
+              (table) => table.sku.equals(sku) & table.deletedAt.isNull(),
+            ))
+          .get();
+      final open = rows.where((row) {
+        final current = row.serverId?.trim() ?? '';
+        return current.isEmpty || current == serverId;
+      }).toList();
+      if (open.length == 1) {
+        return open.first;
+      }
+    }
+
+    return null;
+  }
+
   Future<Product?>
   _getLocalProductByServerId(
       String serverId,
@@ -2447,6 +2555,24 @@ class ProductsSyncRemoteGateway
       return null;
     }
 
+    return text;
+  }
+
+  String? _httpImageUrl(dynamic value) {
+    final text = _nullableString(value);
+    if (text == null) {
+      return null;
+    }
+    if (text.startsWith('data:image/') && text.length <= 1500000) {
+      return text;
+    }
+    if (text.startsWith('data:')) {
+      return null;
+    }
+    final uri = Uri.tryParse(text);
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return null;
+    }
     return text;
   }
 

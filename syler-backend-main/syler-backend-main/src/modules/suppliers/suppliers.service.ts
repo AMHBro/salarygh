@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { pageWindow } from '../../common/paging';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
+import { CreateSupplierSheetDto } from './dto/create-supplier-sheet.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 
 @Injectable()
@@ -47,6 +48,56 @@ export class SuppliersService {
             meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
         };
     }
+    async addSheet(id: string, dto: CreateSupplierSheetDto) {
+        await this.findOne(id);
+        const title = dto.title.trim();
+        const image = dto.image_url.trim();
+        if (!title) {
+            throw new BadRequestException('اسم الصورة مطلوب');
+        }
+        if (!image.startsWith('data:image/')) {
+            throw new BadRequestException('الصورة غير صالحة');
+        }
+        return this.prisma.supplier_sheets.create({
+            data: {
+                supplier_id: id,
+                title,
+                image_url: image,
+            },
+            include: { supplier: { select: { id: true, name: true } } },
+        });
+    }
+
+    async listSheets(pageRaw?: string) {
+        const page = Math.max(1, Number(pageRaw) || 1);
+        const limit = 8;
+        const skip = (page - 1) * limit;
+        const [total, rows] = await Promise.all([
+            this.prisma.supplier_sheets.count(),
+            this.prisma.supplier_sheets.findMany({
+                orderBy: { created_at: 'desc' },
+                skip,
+                take: limit,
+                include: { supplier: { select: { name: true } } },
+            }),
+        ]);
+        return {
+            data: rows.map((row) => ({
+                id: row.id,
+                title: row.title,
+                image_url: row.image_url,
+                created_at: row.created_at,
+                supplier_name: row.supplier.name,
+            })),
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.max(1, Math.ceil(total / limit)),
+            },
+        };
+    }
+
     async findOne(id: string) {
         const supplier = await this.prisma.suppliers.findUnique({
             where: { id },

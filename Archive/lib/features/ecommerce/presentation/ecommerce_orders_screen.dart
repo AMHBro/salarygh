@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../../../core/di/app_services.dart';
 import '../../../core/printing/print_preview.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../representatives/data/rep_debt_ceiling.dart';
+import '../data/cloud_store_orders.dart';
 import '../models/ecommerce_order_model.dart';
 import 'ecommerce_order_details_screen.dart';
 
@@ -30,6 +32,8 @@ class _EcommerceOrdersScreenState
   bool _loading = true;
 
   String? _error;
+
+  List<String> _debtWarnings = const [];
 
   String? _status;
   String? _source;
@@ -71,6 +75,10 @@ class _EcommerceOrdersScreenState
       _error = null;
     });
 
+    final cloud = _filterCloud(
+      await CloudStoreOrders(AppServices.database).pull(),
+    );
+
     try {
       final result = await AppServices
           .ecommerceOrdersRepository
@@ -86,21 +94,43 @@ class _EcommerceOrdersScreenState
         return;
       }
 
+      final seen = result.orders.map((order) => order.id).toSet();
+      final extra = _page == 1
+          ? cloud.where((order) => !seen.contains(order.id)).toList()
+          : const <EcommerceOrderModel>[];
+
+      final shown = [...extra, ...result.orders];
+      final warnings = await _debtWarningsFor(shown);
+
       setState(() {
-        _orders = result.orders;
+        _orders = shown;
+        _debtWarnings = warnings;
         _page = result.page;
         _totalPages = result.totalPages;
-        _total = result.total;
+        _total = result.total + extra.length;
       });
     } catch (error) {
       if (!mounted) {
         return;
       }
 
+      final warnings = _page == 1 && cloud.isNotEmpty
+          ? await _debtWarningsFor(cloud)
+          : const <String>[];
+
       setState(() {
-        _error = _errorText(
-          error,
-        );
+        if (_page == 1 && cloud.isNotEmpty) {
+          _orders = cloud;
+          _debtWarnings = warnings;
+          _total = cloud.length;
+          _totalPages = 1;
+          _error = null;
+        } else {
+          _debtWarnings = const [];
+          _error = _errorText(
+            error,
+          );
+        }
       });
     } finally {
       if (mounted) {
@@ -109,6 +139,45 @@ class _EcommerceOrdersScreenState
         });
       }
     }
+  }
+
+  Future<List<String>> _debtWarningsFor(
+    List<EcommerceOrderModel> orders,
+  ) {
+    final names = <String>{
+      for (final order in orders)
+        if (order.isRepresentative &&
+            (order.representative?.name.trim().isNotEmpty ?? false))
+          order.representative!.name.trim(),
+    };
+    return RepDebtCeiling.messagesForNames(
+      AppServices.database,
+      names,
+    );
+  }
+
+  List<EcommerceOrderModel> _filterCloud(
+    List<EcommerceOrderModel> orders,
+  ) {
+    final query = _searchController.text.trim();
+    return orders.where((order) {
+      if (_status != null &&
+          _status!.isNotEmpty &&
+          order.status != _status) {
+        return false;
+      }
+      if (_source != null &&
+          _source!.isNotEmpty &&
+          order.source != _source) {
+        return false;
+      }
+      if (query.isEmpty) {
+        return true;
+      }
+      final haystack =
+          '${order.orderNumber} ${order.customer?.name ?? ''} ${order.customer?.phone ?? ''} ${order.party?.name ?? ''}';
+      return haystack.contains(query);
+    }).toList();
   }
 
   void _onSearchChanged(
@@ -177,6 +246,11 @@ class _EcommerceOrdersScreenState
                 child: Column(
                   children: [
                     _buildFilters(),
+                    if (_debtWarnings.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      for (final warning in _debtWarnings)
+                        RepDebtBanner(message: warning),
+                    ],
                     const SizedBox(height: 16),
                     Expanded(
                       child: _buildContent(),

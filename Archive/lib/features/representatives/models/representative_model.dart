@@ -14,6 +14,9 @@ class RepresentativeModel {
 
   final String allowedPrices;
 
+  /// 0 يعني بدون سقف ذمة.
+  final double maxDebtLimit;
+
   final int invoicesCount;
   final int soldPieces;
 
@@ -42,6 +45,7 @@ class RepresentativeModel {
     this.locationLink,
     this.commissionPercentage = 0,
     this.allowedPrices = 'wholesale,representative,retail',
+    this.maxDebtLimit = 0,
     this.invoicesCount = 0,
     this.soldPieces = 0,
     this.totalSales = 0,
@@ -66,6 +70,7 @@ class RepresentativeModel {
     String? locationLink,
     double? commissionPercentage,
     String? allowedPrices,
+    double? maxDebtLimit,
     int? invoicesCount,
     int? soldPieces,
     double? totalSales,
@@ -94,6 +99,7 @@ class RepresentativeModel {
       commissionPercentage ??
           this.commissionPercentage,
       allowedPrices: allowedPrices ?? this.allowedPrices,
+      maxDebtLimit: maxDebtLimit ?? this.maxDebtLimit,
       invoicesCount:
       invoicesCount ?? this.invoicesCount,
       soldPieces:
@@ -133,6 +139,7 @@ class RepresentativeModel {
       'commission_percentage':
       commissionPercentage,
       'allowed_prices': allowedPrices,
+      'max_debt_limit': maxDebtLimit,
       'is_active': isActive,
       'version': serverVersion,
       'created_at':

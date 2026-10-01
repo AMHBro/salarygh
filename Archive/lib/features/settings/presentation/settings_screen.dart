@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../../../core/backup/local_backup.dart';
 import '../../../core/di/app_services.dart';
+import '../../../core/lan/office_role.dart';
 import '../../../core/network/server_endpoint.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/company_settings_repository.dart';
+import '../data/print_settings_store.dart';
 import '../models/document_layout.dart';
+import '../models/print_settings.dart';
 import 'document_layout_section.dart';
+import 'print_template_section.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -29,6 +33,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _capitalController = TextEditingController();
   final _lanController = TextEditingController();
   final _internetController = TextEditingController();
+  final _lanMasterController = TextEditingController();
+  final _lanTokenController = TextEditingController();
 
   Map<String, dynamic> _settings = {};
   List<LayoutBlock> _invoiceLayout =
@@ -36,11 +42,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<LayoutBlock> _receiptLayout =
       List<LayoutBlock>.from(DocumentLayouts.receiptDefaults);
   DocumentHeader _documentHeader = const DocumentHeader();
+  PrintSettings _printSettings = const PrintSettings();
   bool _loading = true;
   bool _saving = false;
   bool _backupBusy = false;
   bool _serverSaving = false;
   bool _useInternet = false;
+  bool _branchOffice = false;
   String? _error;
   String? _notice;
 
@@ -61,6 +69,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _capitalController.dispose();
     _lanController.dispose();
     _internetController.dispose();
+    _lanMasterController.dispose();
+    _lanTokenController.dispose();
     super.dispose();
   }
 
@@ -71,6 +81,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     await _loadServer();
+    try {
+      _printSettings = await PrintSettingsStore(AppServices.database).read();
+    } catch (_) {
+      _printSettings = const PrintSettings();
+    }
 
     try {
       final company = await _repository.getCompany();
@@ -116,6 +131,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _lanController.text = route.lanBase;
     _internetController.text = route.internetBase ?? '';
     _useInternet = route.useInternet;
+    _branchOffice = await OfficeRole.instance.isBranch();
+    _lanMasterController.text = await OfficeRole.instance.readBase();
+    _lanTokenController.text = await OfficeRole.instance.readToken();
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _saveServer() async {
@@ -131,6 +151,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           lanBase: _lanController.text,
           internetBase: _internetController.text,
         ),
+      );
+      await OfficeRole.instance.save(
+        branchOffice: _branchOffice,
+        baseUrl: _lanMasterController.text,
+        token: _lanTokenController.text,
       );
       if (!mounted) return;
       final route = await ServerEndpoint.instance.read();
@@ -152,6 +177,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _save() async {
+    try {
+      await PrintSettingsStore(AppServices.database).save(_printSettings);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.toString().replaceFirst('Bad state: ', '');
+        _notice = null;
+      });
+      return;
+    }
+
     final name = _nameController.text.trim();
 
     if (name.isEmpty) {
@@ -390,7 +426,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _field(
               _internetController,
               'عنوان السيرفر عبر الإنترنت',
-              hint: 'https://example.com',
+              hint: ServerEndpoint.defaultInternet,
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment<bool>(
+                  value: false,
+                  label: Text('حاسبة أساسية'),
+                ),
+                ButtonSegment<bool>(
+                  value: true,
+                  label: Text('حاسبة فرعية'),
+                ),
+              ],
+              selected: {_branchOffice},
+              onSelectionChanged: (value) {
+                setState(() => _branchOffice = value.first);
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _branchOffice
+                  ? 'الفاتورة تُرسل إلى الحاسبة الأساسية ولا يُفتح ملفها من هنا.'
+                  : 'هذه الحاسبة تعالج طابور الفروع على ملفها المحلي.',
+              style: const TextStyle(color: AppTheme.secondaryTextColor),
+            ),
+            const SizedBox(height: 8),
+            _field(
+              _lanMasterController,
+              'عنوان خادم الحاسبة الأساسية',
+              hint: 'http://192.168.1.8:3920',
+            ),
+            _field(
+              _lanTokenController,
+              'رمز الشبكة المحلية',
+              hint: 'يُضبط على الحاسبة الأساسية في LAN_TOKEN',
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -416,6 +487,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               hint: 'المبلغ الذي تبدأ به. البيع يضيف الربح، والشراء والقبض والصرف لا يغيرونه',
             ),
             const SizedBox(height: 8),
+            PrintTemplateSection(
+              settings: _printSettings,
+              onChanged: (value) {
+                setState(() {
+                  _printSettings = value;
+                });
+              },
+            ),
+            const SizedBox(height: 18),
             DocumentLayoutSection(
               invoice: _invoiceLayout,
               receipt: _receiptLayout,

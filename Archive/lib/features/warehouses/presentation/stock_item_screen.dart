@@ -4,6 +4,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/di/app_services.dart';
 import '../../../core/printing/print_preview.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../products/presentation/product_stock_panel.dart';
 
 class StockItemScreen extends StatefulWidget {
   final String productId;
@@ -116,21 +117,7 @@ class _StockItemScreenState extends State<StockItemScreen> {
             : ListView(
                 padding: const EdgeInsets.all(24),
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: AppTheme.borderColor,
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Text(
-                      'الموجود ${widget.quantity.toStringAsFixed(0)} ${widget.unit}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
+                  ProductStockPanel(productId: widget.productId),
                   const SizedBox(height: 16),
                   const Text(
                     'القوائم التي خرجت بها هذه المادة',

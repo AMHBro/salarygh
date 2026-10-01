@@ -378,6 +378,10 @@ class _SaleDetailsScreenState
       kind: 'قائمة بيع',
       title: sale.invoiceNumber,
       party: sale.customerName,
+      representative: sale.representativeNameSnapshot ?? '',
+      itemCodes: [
+        for (final item in items) item.barcodeSnapshot ?? '',
+      ],
       printedDate: printDateText(sale.createdAt),
       printedTime: printTimeText(sale.createdAt),
       documentType: _paymentTitle(sale.paymentType),

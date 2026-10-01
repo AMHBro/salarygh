@@ -14,7 +14,6 @@ import '../models/category_model.dart';
 import '../models/product_model.dart';
 import '../models/product_variant_model.dart';
 import '../models/unit_model.dart';
-import 'image_pick.dart';
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({
@@ -619,37 +618,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
     );
   }
 
-  Future<String?> _askImageUrl(BuildContext context) async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('رابط الصورة'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              hintText: 'https://...',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('حفظ'),
-            ),
-          ],
-        );
-      },
-    );
-    controller.dispose();
-    if (result == null || result.isEmpty) return null;
-    return result;
-  }
-
   Future<void> _showProductDialog({
     ProductModel? product,
   }) async {
@@ -719,7 +687,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
           : product.piecesPerCarton.toStringAsFixed(0),
     );
 
-    String? imageUrl = product?.imageUrl;
+    final keptPhoto = (product?.imageUrl ?? '').startsWith('data:image')
+        ? product!.imageUrl!
+        : '';
+    final imageUrlController = TextEditingController(
+      text: keptPhoto.isEmpty ? (product?.imageUrl ?? '') : '',
+    );
 
     String? selectedCategoryId = _resolveCategoryId(
       product,
@@ -827,47 +800,24 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           height: 12,
                         ),
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _ProductImageBox(imageUrl: imageUrl),
-                            const SizedBox(width: 12),
-                            OutlinedButton.icon(
-                              onPressed: saving
-                                  ? null
-                                  : () async {
-                                      try {
-                                        final picked = await pickProductImage();
-                                        if (picked != null) {
-                                          setDialogState(() {
-                                            imageUrl = picked;
-                                            dialogError = null;
-                                          });
-                                          return;
-                                        }
-                                        if (!dialogContext.mounted) return;
-                                        final typed = await _askImageUrl(dialogContext);
-                                        if (typed == null) return;
-                                        setDialogState(() {
-                                          imageUrl = typed;
-                                          dialogError = null;
-                                        });
-                                      } catch (error) {
-                                        setDialogState(() {
-                                          dialogError = _cleanError(error);
-                                        });
-                                      }
-                                    },
-                              icon: const Icon(Icons.image_outlined, size: 18),
-                              label: const Text('إضافة صورة'),
+                            _ProductImageBox(
+                              imageUrl: imageUrlController.text.trim().isEmpty
+                                  ? keptPhoto
+                                  : imageUrlController.text.trim(),
                             ),
-                            if (imageUrl != null && imageUrl!.isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              TextButton(
-                                onPressed: saving
-                                    ? null
-                                    : () => setDialogState(() => imageUrl = null),
-                                child: const Text('إزالة الصورة'),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _DialogField(
+                                label: 'رابط الصورة',
+                                controller: imageUrlController,
+                                hintText: 'https://...',
+                                onChanged: (_) => setDialogState(() {
+                                  dialogError = null;
+                                }),
                               ),
-                            ],
+                            ),
                           ],
                         ),
                         const SizedBox(
@@ -1359,6 +1309,19 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         return;
                       }
 
+                      final imageUrl = imageUrlController.text.trim().isEmpty
+                          ? keptPhoto
+                          : imageUrlController.text.trim();
+                      if (imageUrl.isNotEmpty &&
+                          !imageUrl.startsWith('data:image/') &&
+                          !_isHttpUrl(imageUrl)) {
+                        setDialogState(() {
+                          dialogError =
+                              'رابط الصورة غير صالح. الصق رابطاً يبدأ بـ https://';
+                        });
+                        return;
+                      }
+
                       final category = _findCategory(
                         selectedCategoryId,
                       );
@@ -1429,7 +1392,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               minimumStock: _number(
                                 minimumStockController.text,
                               ),
-                              imageUrl: imageUrl ?? '',
+                              imageUrl: imageUrl,
                             ),
                           );
                         } else {
@@ -3150,38 +3113,58 @@ class _ProductsHeader extends StatelessWidget {
   }
 }
 
-Widget _productThumb(ProductModel product, bool hasVariants) {
-  final url = product.imageUrl;
-  if (url != null && url.isNotEmpty) {
-    if (url.startsWith('data:')) {
-      final comma = url.indexOf(',');
-      if (comma > 0) {
-        try {
-          return Image.memory(
-            base64Decode(url.substring(comma + 1)),
-            fit: BoxFit.cover,
-            width: 38,
-            height: 38,
-          );
-        } catch (_) {}
-      }
-    } else {
-      return Image.network(
-        url,
+bool _isHttpUrl(String value) {
+  final uri = Uri.tryParse(value.trim());
+  return uri != null &&
+      uri.host.isNotEmpty &&
+      (uri.scheme == 'https' || uri.scheme == 'http');
+}
+
+Widget _safeNetworkImage(
+  String url, {
+  required Widget fallback,
+  double? width,
+  double? height,
+}) {
+  if (url.startsWith('data:image/')) {
+    final comma = url.indexOf(',');
+    if (comma < 0) {
+      return fallback;
+    }
+    try {
+      return Image.memory(
+        base64Decode(url.substring(comma + 1)),
+        width: width,
+        height: height,
         fit: BoxFit.cover,
-        width: 38,
-        height: 38,
-        errorBuilder: (context, error, stackTrace) => Icon(
-          hasVariants ? Icons.account_tree_outlined : Icons.inventory_2_outlined,
-          size: 17,
-        ),
+        errorBuilder: (context, error, stackTrace) => fallback,
       );
+    } catch (_) {
+      return fallback;
     }
   }
-  return Icon(
+  if (!_isHttpUrl(url)) {
+    return fallback;
+  }
+  return Image.network(
+    url,
+    width: width,
+    height: height,
+    fit: BoxFit.cover,
+    errorBuilder: (context, error, stackTrace) => fallback,
+  );
+}
+
+Widget _productThumb(ProductModel product, bool hasVariants) {
+  final fallback = Icon(
     hasVariants ? Icons.account_tree_outlined : Icons.inventory_2_outlined,
     size: 17,
   );
+  final url = product.imageUrl?.trim() ?? '';
+  if (url.isEmpty) {
+    return fallback;
+  }
+  return _safeNetworkImage(url, fallback: fallback, width: 38, height: 38);
 }
 
 class _ProductImageBox extends StatelessWidget {
@@ -3191,20 +3174,11 @@ class _ProductImageBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = imageUrl;
-    Widget child = const Icon(Icons.image_outlined);
-    if (url != null && url.isNotEmpty) {
-      if (url.startsWith('data:')) {
-        final comma = url.indexOf(',');
-        if (comma > 0) {
-          try {
-            child = Image.memory(base64Decode(url.substring(comma + 1)), fit: BoxFit.cover);
-          } catch (_) {}
-        }
-      } else {
-        child = Image.network(url, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => child);
-      }
-    }
+    final url = imageUrl?.trim() ?? '';
+    final fallback = const Icon(Icons.image_outlined);
+    final child = url.isEmpty
+        ? fallback
+        : _safeNetworkImage(url, fallback: fallback);
     return Container(
       width: 64,
       height: 64,
@@ -3605,6 +3579,7 @@ class _DialogField extends StatelessWidget {
   final bool numeric;
   final int maxLines;
   final String? hintText;
+  final ValueChanged<String>? onChanged;
 
   const _DialogField({
     required this.label,
@@ -3612,6 +3587,7 @@ class _DialogField extends StatelessWidget {
     this.numeric = false,
     this.maxLines = 1,
     this.hintText,
+    this.onChanged,
   });
 
   @override
@@ -3635,6 +3611,7 @@ class _DialogField extends StatelessWidget {
         TextField(
           controller: controller,
           maxLines: maxLines,
+          onChanged: onChanged,
           keyboardType: numeric
               ? const TextInputType.numberWithOptions(
             decimal: true,

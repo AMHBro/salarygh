@@ -1,6 +1,7 @@
 import {
     Controller,
     Get,
+    Param,
     Query,
     Req,
     UnauthorizedException,
@@ -28,6 +29,10 @@ import {
     RepresentativeAccountsService,
 } from '../services/representative-accounts.service';
 
+import {
+    RepresentativeLedgerService,
+} from '../services/representative-ledger.service';
+
 @ApiTags(
     'M08 - Representative Accounts',
 )
@@ -42,6 +47,7 @@ export class RepresentativeAccountsController {
     constructor(
         private readonly representativeAccountsService:
             RepresentativeAccountsService,
+        private readonly ledger: RepresentativeLedgerService,
     ) { }
 
     /**
@@ -350,5 +356,23 @@ export class RepresentativeAccountsController {
                         : 20,
             },
         );
+    }
+
+    @Get(':id/ledger')
+    @ApiOperation({
+        summary: 'كشف فواتير الذمة وأعمارها لحساب المندوب',
+    })
+    ledgerForAccount(
+        @Req() req: any,
+        @Param('id') partyId: string,
+    ) {
+        const userId = req.user?.id ?? req.user?.userId ?? req.user?.sub;
+        if (!userId) {
+            throw new UnauthorizedException({
+                code: 'AUTH_REQUIRED',
+                message: 'تسجيل الدخول مطلوب',
+            });
+        }
+        return this.ledger.getLedger(userId, partyId);
     }
 }

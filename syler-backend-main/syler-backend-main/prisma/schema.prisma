@@ -145,6 +145,7 @@ model customers {
   users           users?             @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sales_invoices  sales_invoices[]
   payment_vouchers payment_vouchers[]
+  representative_visits representative_visits[]
 
   @@index([phone], map: "idx_customers_phone")
   @@index([assigned_rep_id], map: "idx_customers_rep")
@@ -460,6 +461,7 @@ model representatives {
   branches           branches?            @relation(fields: [branch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users              users                @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sales_invoices     sales_invoices[]
+  representative_visits representative_visits[]
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -548,6 +550,28 @@ model sales_invoices {
   @@index([idempotency_key], map: "idx_sales_idem")
   @@index([rep_id], map: "idx_sales_rep")
   @@index([status], map: "idx_sales_status")
+}
+
+model representative_visits {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  representative_id String          @db.Uuid
+  customer_id       String?         @db.Uuid
+  status            String          @db.VarChar(20)
+  started_at        DateTime        @default(now()) @db.Timestamptz(6)
+  ended_at          DateTime?       @db.Timestamptz(6)
+  postponed_until   DateTime?       @db.Timestamptz(6)
+  latitude          Decimal?        @db.Decimal(9, 6)
+  longitude         Decimal?        @db.Decimal(9, 6)
+  geofence_radius_m Int             @default(150)
+  notes             String?
+  created_at        DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime        @default(now()) @db.Timestamptz(6)
+  representatives   representatives @relation(fields: [representative_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customers         customers?      @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([representative_id], map: "idx_rep_visits_rep")
+  @@index([customer_id], map: "idx_rep_visits_customer")
+  @@index([status], map: "idx_rep_visits_status")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.

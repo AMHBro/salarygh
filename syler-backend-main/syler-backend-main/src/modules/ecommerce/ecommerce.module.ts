@@ -87,8 +87,20 @@ import {
 } from './controllers/representative-accounts.controller';
 
 import {
+    RepresentativeVisitsController,
+} from './controllers/representative-visits.controller';
+
+import {
     RepresentativeAccountsService,
 } from './services/representative-accounts.service';
+
+import {
+    RepresentativeLedgerService,
+} from './services/representative-ledger.service';
+
+import {
+    RepresentativeVisitsService,
+} from './services/representative-visits.service';
 
 import {
     AgentPortalController,
@@ -139,6 +151,8 @@ import {
 
         RepresentativeAccountsController,
 
+        RepresentativeVisitsController,
+
         AgentPortalController,
 
         EcommerceAdminController,
@@ -167,6 +181,10 @@ import {
         EcommerceOrderService,
 
         RepresentativeAccountsService,
+
+        RepresentativeLedgerService,
+
+        RepresentativeVisitsService,
 
         AgentPortalService,
 

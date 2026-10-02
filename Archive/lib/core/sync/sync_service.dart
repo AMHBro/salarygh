@@ -8,6 +8,7 @@ import '../database/app_database.dart';
 import '../floor/floor_store.dart';
 import '../floor/floor_sync.dart';
 import '../lan/lan_inbox.dart';
+import '../lan/lan_sale_bridge.dart';
 import '../../features/ecommerce/data/cloud_store_orders.dart';
 import '../network/api_client.dart';
 import 'connectivity_service.dart';
@@ -129,6 +130,11 @@ class SyncService {
           unawaited(
             LanInbox.drain(database),
           );
+          unawaited(() async {
+            try {
+              await LanSaleBridge.pullMasterSnapshot(database);
+            } catch (_) {}
+          }());
         },
       );
     }

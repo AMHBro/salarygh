@@ -1,8 +1,9 @@
-import 'dart:html' as html;
+import 'package:universal_html/html.dart' as html;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/network/server_endpoint.dart';
 import '../../../core/theme/app_theme.dart';
 
 class PhotoDeskPage extends StatefulWidget {
@@ -19,7 +20,7 @@ class _PhotoDeskPageState extends State<PhotoDeskPage> {
   final _sheetTitle = TextEditingController();
   final _dio = Dio(
     BaseOptions(
-      baseUrl: 'https://salarygh-production.up.railway.app/api/v1',
+      baseUrl: ServerEndpoint.defaultInternet,
       connectTimeout: const Duration(seconds: 20),
       receiveTimeout: const Duration(seconds: 40),
     ),

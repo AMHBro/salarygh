@@ -140,6 +140,91 @@ class LanSaleBridge {
     );
   }
 
+  static Future<void> pullMasterSnapshot(AppDatabase database) async {
+    final role = OfficeRole.instance;
+    if (!await role.isBranch()) return;
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: await role.readBase(),
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 20),
+        headers: {'Authorization': 'Bearer ${await role.readToken()}'},
+      ),
+    );
+    final stock = await dio.get<dynamic>('/v1/reads/stock');
+    final products = await dio.get<dynamic>(
+      '/v1/reads/products',
+      queryParameters: const {'q': ''},
+    );
+    await _applyStock(database, _rows(stock.data));
+    await _applyCatalog(database, _rows(products.data));
+  }
+
+  static List<Map> _rows(Object? body) {
+    final data = body is Map ? body['data'] : null;
+    if (data is! List) return const [];
+    return [
+      for (final row in data)
+        if (row is Map) row,
+    ];
+  }
+
+  static Future<void> _applyStock(AppDatabase database, List<Map> rows) async {
+    for (final row in rows) {
+      final variantId = '${row['variant_id'] ?? ''}'.trim();
+      final warehouseId = '${row['warehouse_id'] ?? ''}'.trim();
+      if (variantId.isEmpty || warehouseId.isEmpty) continue;
+      final quantity = row['quantity'] is num ? (row['quantity'] as num).toDouble() : 0.0;
+      final balance = await (database.select(database.stockBalances)
+            ..where(
+              (table) =>
+                  table.variantId.equals(variantId) & table.warehouseId.equals(warehouseId),
+            ))
+          .getSingleOrNull();
+      if (balance == null) {
+        await database.into(database.stockBalances).insert(
+              StockBalancesCompanion.insert(
+                id: '${variantId}_$warehouseId',
+                variantId: variantId,
+                warehouseId: warehouseId,
+                quantity: Value(quantity),
+                updatedAt: DateTime.now(),
+              ),
+            );
+        continue;
+      }
+      await (database.update(database.stockBalances)..where((table) => table.id.equals(balance.id)))
+          .write(
+        StockBalancesCompanion(
+          quantity: Value(quantity),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+    }
+  }
+
+  static Future<void> _applyCatalog(AppDatabase database, List<Map> rows) async {
+    for (final row in rows) {
+      final barcode = '${row['barcode'] ?? ''}'.trim();
+      if (barcode.isEmpty) continue;
+      final retail = row['retail_price'] is num ? (row['retail_price'] as num).toDouble() : 0.0;
+      final wholesale =
+          row['wholesale_price'] is num ? (row['wholesale_price'] as num).toDouble() : 0.0;
+      await database.customUpdate(
+        '''
+        UPDATE products
+        SET retail_price = ?, wholesale_price = ?
+        WHERE barcode = ?
+        ''',
+        variables: [
+          Variable.withReal(retail),
+          Variable.withReal(wholesale),
+          Variable.withString(barcode),
+        ],
+      );
+    }
+  }
+
   static Future<String?> _serverId(
     AppDatabase database,
     String table,

@@ -6,8 +6,7 @@ import '../storage/auth_storage.dart';
 import 'server_endpoint.dart';
 
 class ApiClient {
-  static const String baseUrl =
-      ServerEndpoint.defaultLan;
+  static const String baseUrl = ServerEndpoint.defaultInternet;
 
   final AuthStorage authStorage;
 

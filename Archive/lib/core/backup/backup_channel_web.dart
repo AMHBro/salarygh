@@ -1,4 +1,4 @@
-import 'dart:html' as html;
+import 'package:universal_html/html.dart' as html;
 
 Future<void> saveBackupFile(String name, String contents) async {
   final blob = html.Blob([contents], 'application/json');

@@ -37,13 +37,24 @@ class _AliraShopAppState extends State<AliraShopApp> {
   }
 
   Future<void> _loadShelf() async {
-    await AliraCatalog.load(
-      agent: false,
-      query: _search.text,
-      familyId: _search.text.trim().isEmpty ? _familyId : null,
-    );
-    if (!mounted) return;
-    setState(() => _loading = false);
+    try {
+      await AliraCatalog.load(
+        agent: false,
+        query: _search.text,
+        familyId: _search.text.trim().isEmpty ? _familyId : null,
+      );
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = null;
+      });
+    } on ServerConnectionException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error.message;
+      });
+    }
   }
 
   void _scheduleShelf() {
@@ -52,7 +63,11 @@ class _AliraShopAppState extends State<AliraShopApp> {
       query: _search.text,
       familyId: _search.text.trim().isEmpty ? _familyId : null,
       onDone: () {
-        if (mounted) setState(() => _loading = false);
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _error = AliraCatalog.connectionError;
+        });
       },
     );
   }
@@ -252,6 +267,14 @@ class _AliraShopAppState extends State<AliraShopApp> {
             ),
           ),
         ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Text(
+              _error!,
+              style: const TextStyle(color: AliraColors.red, fontWeight: FontWeight.w700),
+            ),
+          ),
         SizedBox(
           height: 52,
           child: ListView(

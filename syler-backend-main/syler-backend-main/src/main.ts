@@ -10,7 +10,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   app.use(json({ limit: '4mb' }));
   app.use(urlencoded({ extended: true, limit: '4mb' }));
-  const extraOrigins = allowedOriginsFromEnv(process.env.CORS_ORIGINS);
+  const extraOrigins = [
+    'https://hajecamell.store',
+    'https://www.hajecamell.store',
+    ...allowedOriginsFromEnv(process.env.CORS_ORIGINS),
+  ];
   app.enableCors({
     origin: (
       origin: string | undefined,

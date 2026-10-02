@@ -23,7 +23,7 @@ class AliraStoreOrders {
 
   static final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: ServerEndpoint.defaultLan,
+      baseUrl: ServerEndpoint.defaultInternet,
       connectTimeout: const Duration(seconds: 8),
       receiveTimeout: const Duration(seconds: 20),
     ),

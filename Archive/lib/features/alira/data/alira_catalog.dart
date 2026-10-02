@@ -12,7 +12,8 @@ class AliraCatalog {
   static bool hasNext = false;
   static bool loading = false;
   static int page = 1;
-  static List<AliraProduct> products = AliraMock.instance.products;
+  static List<AliraProduct> products = const [];
+  static String? connectionError;
   static List<AliraFamily> _serverFamilies = const [];
   static final Map<String, AliraProduct> _byId = {};
   static int _generation = 0;
@@ -23,7 +24,7 @@ class AliraCatalog {
 
   static final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: ServerEndpoint.defaultLan,
+      baseUrl: ServerEndpoint.defaultInternet,
       connectTimeout: const Duration(seconds: 4),
       receiveTimeout: const Duration(seconds: 8),
     ),
@@ -52,6 +53,7 @@ class AliraCatalog {
     fromServer = false;
     hasNext = false;
     page = 1;
+    connectionError = null;
   }
 
   static AliraProduct? byId(String id) => _byId[id];
@@ -90,7 +92,11 @@ class AliraCatalog {
   }) {
     _searchTimer?.cancel();
     _searchTimer = Timer(const Duration(milliseconds: 350), () async {
-      await load(agent: agent, query: query, familyId: familyId);
+      try {
+        await load(agent: agent, query: query, familyId: familyId);
+      } on ServerConnectionException {
+        // connectionError يحمل حالة الانقطاع للواجهة.
+      }
       onDone();
     });
   }
@@ -134,10 +140,27 @@ class AliraCatalog {
       if (batch.families.isNotEmpty) {
         _serverFamilies = batch.families;
       }
+      if (!append && batch.products.isEmpty) {
+        products = const [];
+        _serverFamilies = batch.families;
+        fromServer = false;
+        hasNext = false;
+        page = 1;
+        throw const ServerConnectionException();
+      }
       fromServer = true;
       hasNext = batch.hasMore;
-    } catch (_) {
-      if (generation == _generation && products.isEmpty) applyMock();
+      connectionError = null;
+    } catch (error) {
+      if (generation != _generation) return;
+      products = const [];
+      fromServer = false;
+      hasNext = false;
+      connectionError = error is ServerConnectionException
+          ? error.message
+          : 'الكتالوج غير متصل بالسيرفر';
+      if (error is ServerConnectionException) rethrow;
+      throw ServerConnectionException(connectionError!);
     } finally {
       if (generation == _generation) loading = false;
     }
@@ -212,6 +235,17 @@ String? _text(Object? value) {
   final text = '${value ?? ''}'.trim();
   if (text.isEmpty || text == 'null') return null;
   return text;
+}
+
+class ServerConnectionException implements Exception {
+  final String message;
+
+  const ServerConnectionException([
+    this.message = 'الكتالوج غير متصل بالسيرفر',
+  ]);
+
+  @override
+  String toString() => message;
 }
 
 class AliraFamily {

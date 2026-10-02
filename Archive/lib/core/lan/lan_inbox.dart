@@ -7,6 +7,7 @@ import '../../features/sales/models/cart_item_model.dart';
 import '../../features/sales/models/sale_model.dart';
 import '../database/app_database.dart';
 import '../di/app_services.dart';
+import 'lan_sync_policy.dart';
 import 'office_role.dart';
 
 class LanInbox {
@@ -32,7 +33,7 @@ class LanInbox {
       FROM lan_inbox
       WHERE status = 'pending' AND kind = 'sale.submit'
       ORDER BY created_at
-      LIMIT 5
+      LIMIT ${LanSyncPolicy.saleBatchLimit}
       ''',
     ).get();
     for (final row in rows) {
@@ -41,7 +42,7 @@ class LanInbox {
       try {
         final existing = await database.customSelect(
           '''
-          SELECT id, invoice_number
+          SELECT id, invoice_number, total
           FROM sales
           WHERE notes LIKE ?
           LIMIT 1
@@ -49,6 +50,23 @@ class LanInbox {
           variables: [Variable.withString('%[lan:$key]%')],
         ).getSingleOrNull();
         if (existing != null) {
+          final payload = jsonDecode(row.read<String>('payload'));
+          final decision = LanSyncPolicy.decideSale(
+            existing: {
+              'id': existing.read<String>('id'),
+              'total': existing.read<double>('total'),
+            },
+            payloadTotal: payload is Map ? _number(payload['total']) : 0,
+          );
+          if (decision == 'conflict') {
+            await _mark(
+              database,
+              id,
+              status: 'rejected',
+              error: 'تعارض: إجمالي الفاتورة لا يطابق النسخة المسجلة.',
+            );
+            continue;
+          }
           await _mark(
             database,
             id,

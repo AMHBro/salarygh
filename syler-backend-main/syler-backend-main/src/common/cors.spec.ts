@@ -6,6 +6,8 @@ describe('CORS allowlist', () => {
     it('يسمح للمضيف المحلي والشبكة الخاصة ونطاق المتجر', () => {
         expect(isAllowedOrigin('http://localhost:54321', store)).toBe(true);
         expect(isAllowedOrigin('http://192.168.1.20:8080', store)).toBe(true);
+        expect(isAllowedOrigin('https://hajecamell.store', [])).toBe(true);
+        expect(isAllowedOrigin('https://www.hajecamell.store', [])).toBe(true);
         expect(isAllowedOrigin('https://shop.example.com', store)).toBe(true);
     });
 

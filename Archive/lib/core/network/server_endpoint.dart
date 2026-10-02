@@ -7,8 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class ServerEndpoint {
   static const defaultLan = 'http://127.0.0.1:3000/api/v1';
 
-  static const defaultInternet =
-      'https://salarygh-production.up.railway.app/api/v1';
+  static const defaultInternet = 'https://hajecamell.store/api/v1';
 
   static const _lanKey = 'server_lan_base';
   static const _internetKey = 'server_internet_base';
@@ -29,13 +28,15 @@ class ServerEndpoint {
     return ServerRoute(
       useInternet: route == 'internet',
       lanBase: normalizeServerBase(lan) ?? defaultLan,
-      internetBase: normalizeServerBase(internet) ?? defaultInternet,
+      internetBase: normalizeServerBase(_dropLegacyHost(internet)) ??
+          defaultInternet,
     );
   }
 
   Future<void> save(ServerRoute route) async {
     final lan = normalizeServerBase(route.lanBase) ?? defaultLan;
-    final internet = normalizeServerBase(route.internetBase);
+    final internet =
+        normalizeServerBase(_dropLegacyHost(route.internetBase));
     await _storage.write(key: _lanKey, value: lan);
     await _storage.write(key: _routeKey, value: route.useInternet ? 'internet' : 'lan');
     if (internet == null) {
@@ -63,7 +64,7 @@ class ServerEndpoint {
     await _storage.write(key: _publicOfficeKey, value: '1');
   }
 
-  /// عنوان المكتب: عبر الإنترنت يشمل سيرفر Railway العام.
+  /// عنوان المكتب: عبر الإنترنت يشمل السيرفر العام.
   Future<String> activeBaseUrl() async {
     final route = await read();
     if (route.useInternet) {
@@ -89,6 +90,15 @@ class ServerRoute {
     required this.lanBase,
     required this.internetBase,
   });
+}
+
+/// يتجاهل عنوان Railway القديم حتى تُستخدم النسخة المنشورة الحالية.
+String? _dropLegacyHost(String? raw) {
+  final text = raw?.trim() ?? '';
+  if (text.contains('salarygh-production.up.railway.app')) {
+    return null;
+  }
+  return raw;
 }
 
 /// يقبل `192.168.1.8` أو `192.168.1.8:3000` أو رابطاً كاملاً.

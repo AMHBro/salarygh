@@ -28,5 +28,9 @@ export function isAllowedOrigin(origin: string, extraOrigins: string[] = []): bo
         return false;
     }
 
+    if (url.hostname === 'hajecamell.store' || url.hostname === 'www.hajecamell.store') {
+        return true;
+    }
+
     return PRIVATE_HOST.test(url.hostname);
 }

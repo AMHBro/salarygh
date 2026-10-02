@@ -112,13 +112,19 @@ function queueRow(row) {
 
 function readStock(url) {
   const warehouseId = url.searchParams.get('warehouseId') || '';
-  const rows = db.prepare(`
+  if (!warehouseId) {
+    return db.prepare(`
+      SELECT variant_id, warehouse_id, quantity
+      FROM stock_balances
+      LIMIT 2000
+    `).all();
+  }
+  return db.prepare(`
     SELECT variant_id, warehouse_id, quantity
     FROM stock_balances
     WHERE warehouse_id = ?
-    LIMIT 500
+    LIMIT 2000
   `).all(warehouseId);
-  return rows;
 }
 
 function readCustomers(url) {
@@ -139,7 +145,7 @@ function readProducts(url) {
     FROM products
     WHERE deleted_at IS NULL AND name LIKE ?
     ORDER BY name
-    LIMIT 40
+    LIMIT 500
   `).all(q);
 }
 

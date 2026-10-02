@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/network/server_endpoint.dart';
 import '../../../core/theme/app_theme.dart';
 
 class ManagerDeskPage extends StatefulWidget {
@@ -15,7 +16,7 @@ class _ManagerDeskPageState extends State<ManagerDeskPage> {
   final _password = TextEditingController();
   final _dio = Dio(
     BaseOptions(
-      baseUrl: 'https://salarygh-production.up.railway.app/api/v1',
+      baseUrl: ServerEndpoint.defaultInternet,
       connectTimeout: const Duration(seconds: 20),
       receiveTimeout: const Duration(seconds: 40),
     ),

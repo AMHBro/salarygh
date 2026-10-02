@@ -55,6 +55,7 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
   String? _invoicePrice = 'representative';
   Map<String, dynamic>? _account;
   final Map<String, AliraStatement> _statements = {};
+  AliraAging? _serverAging;
   bool _rememberLogin = false;
   int _queuedCount = 0;
   static const _loginStorage = FlutterSecureStorage();
@@ -66,6 +67,14 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     _routes = AliraCatalog.forceMock ? _mock.getRoutes('2026-09-20') : _blankRoutes();
     AliraCatalog.load(agent: true).then((_) {
       if (mounted) setState(() {});
+    }).catchError((Object error) {
+      if (!mounted) return null;
+      setState(() {
+        _error = error is ServerConnectionException
+            ? error.message
+            : 'الكتالوج غير متصل بالسيرفر';
+      });
+      return null;
     });
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -407,13 +416,24 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     } else if (AliraCatalog.forceMock) {
       visit = _mock.startVisit(customer.id);
     } else {
-      visit = AliraVisit(
-        id: 'vis_${customer.id}',
-        customerId: customer.id,
-        status: 'in_progress',
-        startedAt: DateTime.now().toIso8601String(),
-      );
-      _routes?.activeVisit = visit;
+      try {
+        final body = await _api.startVisit(customerId: customer.id);
+        final id = '${body['id'] ?? ''}';
+        if (id.isEmpty || id.startsWith('vis_')) {
+          throw StateError('السيرفر لم يعِد معرّف زيارة');
+        }
+        visit = AliraVisit(
+          id: id,
+          customerId: customer.id,
+          status: '${body['status'] ?? 'in_progress'}',
+          startedAt: '${body['started_at'] ?? DateTime.now().toIso8601String()}',
+        );
+        _routes?.activeVisit = visit;
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _error = AliraAgentApi.message(error));
+        return;
+      }
     }
     _customer = customer;
     _notes.text = visit.notes;
@@ -454,6 +474,20 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     if (AliraCatalog.forceMock) {
       _mock.finishVisit(visit.id, action, _notes.text.trim());
     } else {
+      try {
+        if (action == 'postpone') {
+          await _api.postponeVisit(
+            visitId: visit.id,
+            notes: _notes.text.trim(),
+          );
+        } else {
+          await _api.endVisit(visitId: visit.id, notes: _notes.text.trim());
+        }
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _error = AliraAgentApi.message(error));
+        return;
+      }
       visit.status = action == 'complete'
           ? 'completed'
           : action == 'postpone'
@@ -1166,8 +1200,8 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
               Wrap(
                 spacing: 8,
                 children: [
-                  OutlinedButton(onPressed: () => _push(_Page.aging), child: const Text('أعمار الذمم')),
-                  OutlinedButton(onPressed: () => _push(_Page.statement), child: const Text('كشف حساب')),
+                  OutlinedButton(onPressed: () => _openLedger(_Page.aging), child: const Text('أعمار الذمم')),
+                  OutlinedButton(onPressed: () => _openLedger(_Page.statement), child: const Text('كشف حساب')),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1720,33 +1754,85 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     );
   }
 
-  AliraAging _liveAging(AliraCustomer customer) {
-    final due = customer.balance;
-    final invoices = due == 0
-        ? <AliraInvoice>[]
-        : [
-            AliraInvoice(
-              id: 'due-${customer.id}',
-              number: 'ذمة',
-              customerId: customer.id,
-              type: 'BALANCE',
-              date: _blankRoutes().date,
-              amount: due.abs(),
-              remaining: due.abs(),
-              ageDays: customer.agingDays,
-              overdue: due > 0,
-            ),
-          ];
+  Future<void> _openLedger(_Page page) async {
+    final customer = _customer;
+    if (customer == null) return;
+    if (!AliraCatalog.forceMock) {
+      try {
+        final body = await _api.ledger(customer.id);
+        if (!mounted) return;
+        _serverAging = _agingFromLedger(customer, body);
+        _statements[customer.id] = _statementFromLedger(customer, body);
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _error = AliraAgentApi.message(error));
+        return;
+      }
+    }
+    _push(page);
+  }
+
+  AliraAging _agingFromLedger(AliraCustomer customer, Map<String, dynamic> body) {
+    final raw = body['invoices'];
+    final invoices = <AliraInvoice>[];
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final remaining = _asInt(item['remaining']);
+        invoices.add(
+          AliraInvoice(
+            id: '${item['id']}',
+            number: '${item['number'] ?? ''}',
+            customerId: customer.id,
+            type: '${item['bucket'] ?? 'BALANCE'}',
+            date: '${item['date'] ?? ''}',
+            amount: _asInt(item['amount']),
+            remaining: remaining,
+            ageDays: _asInt(item['age_days']),
+            overdue: _asInt(item['age_days']) > 30 || remaining > 0,
+          ),
+        );
+      }
+    }
     return AliraAging(
       customer: customer,
-      overdueCount: due > 0 ? 1 : 0,
+      overdueCount: invoices.where((item) => item.overdue).length,
       allowedCount: 0,
       invoices: invoices,
     );
   }
 
+  AliraStatement _statementFromLedger(AliraCustomer customer, Map<String, dynamic> body) {
+    final report = _agingFromLedger(customer, body);
+    final debit = report.invoices.fold<int>(0, (sum, item) => sum + item.remaining);
+    return AliraStatement(
+      customerId: customer.id,
+      debit: debit,
+      credit: 0,
+      balance: debit,
+      lastMovementDate: report.invoices.isEmpty ? null : report.invoices.last.date,
+      entries: [
+        for (final invoice in report.invoices)
+          AliraStatementEntry(
+            id: invoice.id,
+            date: invoice.date,
+            title: invoice.number,
+            amount: invoice.remaining,
+          ),
+      ],
+    );
+  }
+
   Widget _agingPage() {
-    final report = AliraCatalog.forceMock ? _mock.getAging(_customer!.id) : _liveAging(_customer!);
+    final report = AliraCatalog.forceMock
+        ? _mock.getAging(_customer!.id)
+        : (_serverAging ??
+            AliraAging(
+              customer: _customer!,
+              overdueCount: 0,
+              allowedCount: 0,
+              invoices: const [],
+            ));
     final total = report.invoices.fold<int>(0, (sum, item) => sum + item.remaining);
     return Column(
       children: [

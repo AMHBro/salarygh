@@ -6,7 +6,7 @@ class AliraAgentApi {
       : _dio = dio ??
             Dio(
               BaseOptions(
-                baseUrl: ServerEndpoint.defaultLan,
+                baseUrl: ServerEndpoint.defaultInternet,
                 connectTimeout: const Duration(seconds: 8),
                 receiveTimeout: const Duration(seconds: 12),
               ),
@@ -79,6 +79,73 @@ class AliraAgentApi {
       throw StateError('تعذر قراءة حسابات المندوب');
     }
     return Map<String, dynamic>.from(body);
+  }
+
+  Future<Map<String, dynamic>> startVisit({
+    required String customerId,
+    double? latitude,
+    double? longitude,
+  }) async {
+    return _post('/visits/start', {
+      'customer_id': customerId,
+      'latitude': ?latitude,
+      'longitude': ?longitude,
+    });
+  }
+
+  Future<Map<String, dynamic>> endVisit({
+    required String visitId,
+    String? notes,
+  }) async {
+    return _post('/visits/end', {
+      'visit_id': visitId,
+      'notes': ?_note(notes),
+    });
+  }
+
+  Future<Map<String, dynamic>> postponeVisit({
+    required String visitId,
+    String? notes,
+    String? postponedUntil,
+  }) async {
+    return _post('/visits/postpone', {
+      'visit_id': visitId,
+      'notes': ?_note(notes),
+      'postponed_until': ?postponedUntil,
+    });
+  }
+
+  Future<Map<String, dynamic>> ledger(String partyId) async {
+    await _useActiveServer();
+    final response = await _dio.get<dynamic>(
+      '/store/representative/accounts/$partyId/ledger',
+      options: Options(headers: {'authorization': 'Bearer $token'}),
+    );
+    final body = response.data;
+    if (body is! Map) {
+      throw StateError('تعذر قراءة كشف الذمم');
+    }
+    return Map<String, dynamic>.from(body);
+  }
+
+  Future<Map<String, dynamic>> _post(String path, Map<String, Object?> data) async {
+    await _useActiveServer();
+    final response = await _dio.post<dynamic>(
+      path,
+      data: data,
+      options: Options(headers: {'authorization': 'Bearer $token'}),
+    );
+    final body = response.data;
+    if (body is! Map) {
+      throw StateError('تعذر حفظ الزيارة');
+    }
+    return Map<String, dynamic>.from(body);
+  }
+
+  static String? _note(String? notes) {
+    final text = notes?.trim() ?? '';
+    if (text.isEmpty) return null;
+    return text;
   }
 
   static String message(Object error) {

@@ -7,7 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 
-export interface VisitBody {
+export class VisitBody {
     customer_id?: string;
     visit_id?: string;
     latitude?: number;

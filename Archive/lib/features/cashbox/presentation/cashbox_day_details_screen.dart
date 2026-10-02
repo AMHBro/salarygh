@@ -201,7 +201,7 @@ class _CashboxDayDetailsScreenState
               CrossAxisAlignment.start,
               children: [
                 Text(
-                  'تقرير الصندوق - ${_formatDate(widget.date)}',
+                  'تقرير النقد - ${_formatDate(widget.date)}',
                   style:
                   const TextStyle(
                     fontSize: 25,
@@ -403,7 +403,7 @@ class _CashboxDayDetailsScreenState
               children: [
                 const Expanded(
                   child: Text(
-                    'جلسات الصندوق',
+                    'جلسات النقد',
                     style:
                     TextStyle(
                       fontSize: 17,
@@ -434,7 +434,7 @@ class _CashboxDayDetailsScreenState
               height: 150,
               child: Center(
                 child: Text(
-                  'لا توجد جلسات صندوق لهذا اليوم.',
+                  'لا توجد جلسات النقد لهذا اليوم.',
                 ),
               ),
             )
@@ -918,7 +918,7 @@ class _CashboxDayDetailsScreenState
                           invoice.cashboxSessionId ==
                               null
                               ? 'غير مرتبط'
-                              : 'مرتبط بالصندوق',
+                              : 'مرتبط بالنقد',
                           style:
                           TextStyle(
                             fontSize: 10,

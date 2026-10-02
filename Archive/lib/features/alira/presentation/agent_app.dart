@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../data/agent_location.dart';
 import '../data/alira_agent_api.dart';
 import '../data/alira_catalog.dart';
 import '../data/alira_mock.dart';
@@ -35,6 +36,7 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
   final _officeAddress = TextEditingController();
   final _search = TextEditingController();
   final _notes = TextEditingController();
+  final _agentLocation = TextEditingController();
   final _paid = TextEditingController(text: '0');
   final _productSearch = TextEditingController();
   final List<_Page> _stack = [_Page.routes];
@@ -132,6 +134,7 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     _officeAddress.dispose();
     _search.dispose();
     _notes.dispose();
+    _agentLocation.dispose();
     _paid.dispose();
     _productSearch.dispose();
     AliraCatalog.cancelPending();
@@ -562,6 +565,19 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
     }
   }
 
+  Future<void> _captureLocation() async {
+    final point = await currentAgentLocation();
+    if (!mounted) return;
+    setState(() {
+      if (point != null && point.trim().isNotEmpty) {
+        _agentLocation.text = point.trim();
+        _error = null;
+      } else {
+        _error = 'تعذر قراءة الموقع. اكتب الإحداثيات أو رابط الخرائط.';
+      }
+    });
+  }
+
   Future<void> _sendSale() async {
     final visit = _routes?.activeVisit;
     final customer = _customer;
@@ -602,6 +618,14 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
           cart: _cart,
           productOf: _shelfProduct,
         );
+        var location = _agentLocation.text.trim();
+        if (location.isEmpty) {
+          final point = await currentAgentLocation();
+          if (point != null && point.trim().isNotEmpty) {
+            location = point.trim();
+            _agentLocation.text = location;
+          }
+        }
         final number = await AliraStoreOrders.representative(
           token: token,
           partyName: customer.name,
@@ -611,6 +635,7 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
           paidAmount: _payment == 'PARTIAL' ? partialPaid : null,
           partyId: customer.id,
           priceType: _apiPriceType,
+          notes: location,
           lines: lines,
         );
         final sale = _localSale(visit.id, customer);
@@ -1423,6 +1448,21 @@ class _AliraAgentAppState extends State<AliraAgentApp> {
                   labelText: 'المدفوع',
                   filled: true,
                   fillColor: AliraColors.paper,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _agentLocation,
+                decoration: InputDecoration(
+                  labelText: 'موقعك الآن',
+                  hintText: 'يُرفق مع الطلب',
+                  filled: true,
+                  fillColor: AliraColors.paper,
+                  suffixIcon: IconButton(
+                    tooltip: 'موقعي الآن',
+                    onPressed: _busy ? null : _captureLocation,
+                    icon: const Icon(Icons.my_location_outlined),
+                  ),
                 ),
               ),
               if (_error != null)

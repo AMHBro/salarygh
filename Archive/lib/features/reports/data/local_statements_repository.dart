@@ -632,6 +632,65 @@ class LocalStatementsRepository {
     return rows;
   }
 
+  Future<List<Map<String, dynamic>>> supplierStatement({
+    required String supplierId,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final supplier = await (database.select(database.suppliers)
+          ..where((table) => table.id.equals(supplierId)))
+        .getSingleOrNull();
+    final name = supplier?.name ?? '';
+    final entries = await (database.select(database.supplierLedgerEntries)
+          ..where((table) => table.supplierId.equals(supplierId)))
+        .get();
+    final purchases = await database.select(database.purchases).get();
+    final payments = await database.select(database.supplierPayments).get();
+    final purchaseById = {for (final row in purchases) row.id: row};
+    final paymentById = {for (final row in payments) row.id: row};
+    final movements = <Map<String, dynamic>>[];
+
+    for (final entry in entries) {
+      if (!_inRange(entry.createdAt, from, to)) {
+        continue;
+      }
+      final purchase = purchaseById[entry.referenceId ?? ''];
+      final payment = paymentById[entry.referenceId ?? ''];
+      final paymentEntry = entry.type == 'PAYMENT' || entry.type == 'RECEIPT';
+      final purchaseEntry =
+          entry.type == 'PURCHASE' || entry.type == 'OPENING_BALANCE';
+      movements.add({
+        'supplier_name': name,
+        'operation_type': purchaseEntry
+            ? 'شراء'
+            : paymentEntry
+                ? 'صرف'
+                : entry.type,
+        'reference_number':
+            purchase?.invoiceNumber ?? payment?.voucherNumber ?? '',
+        'invoice_date': entry.createdAt.toIso8601String(),
+        'occurred_at': entry.createdAt.toIso8601String(),
+        'debit_iqd': paymentEntry ? entry.amount : 0,
+        'credit_iqd': purchaseEntry ? entry.amount : 0,
+        'currency': entry.currency,
+        'notes': entry.note ?? '',
+        '_sort': entry.createdAt,
+      });
+    }
+
+    movements.sort(
+      (a, b) => (a['_sort'] as DateTime).compareTo(b['_sort'] as DateTime),
+    );
+    var running = 0.0;
+    for (final row in movements) {
+      running += (row['credit_iqd'] as num).toDouble() -
+          (row['debit_iqd'] as num).toDouble();
+      row['running_balance_iqd'] = running;
+      row.remove('_sort');
+    }
+    return movements;
+  }
+
   bool _inRange(DateTime date, DateTime? from, DateTime? to) {
     final day = DateTime(date.year, date.month, date.day);
     if (from != null &&

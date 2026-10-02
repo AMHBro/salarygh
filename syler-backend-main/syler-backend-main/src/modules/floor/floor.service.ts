@@ -224,7 +224,7 @@ export class FloorService implements OnModuleInit {
             ${randomUUID()},
             CAST(${line.variantId} AS uuid),
             CAST(${candidate.warehouse_id} AS uuid),
-            ${line.baseQuantity.toString()},
+            CAST(${line.baseQuantity.toString()} AS NUMERIC),
             ${key},
             ${expires}
           )

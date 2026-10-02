@@ -43,6 +43,76 @@ class SyncQueueRepository {
     );
   }
 
+  /// يضع زبائن وموردين بلا رقم سيرفر في الطابور حتى تُرفع السندات بعدها.
+  Future<int> enqueueUnsyncedParties() async {
+    final queued = await (database.select(database.syncOutbox)..where(
+      (table) =>
+          table.entityType.isIn(['customer', 'supplier']) &
+          table.operation.equals('CREATE') &
+          table.status.isIn(['PENDING', 'SYNCING', 'FAILED']),
+    ))
+        .get();
+    final blocked = {
+      for (final row in queued) '${row.entityType}:${row.entityId}',
+    };
+
+    var added = 0;
+    final customers = await (database.select(database.customers)
+          ..where((table) => table.deletedAt.isNull()))
+        .get();
+    final suppliers = await (database.select(database.suppliers)
+          ..where((table) => table.deletedAt.isNull()))
+        .get();
+
+    await database.transaction(() async {
+      for (final row in customers) {
+        if (!_needsServerId(row.serverId) || _skipPartyName(row.name)) {
+          continue;
+        }
+        if (blocked.contains('customer:${row.id}')) continue;
+        await enqueue(
+          entityType: 'customer',
+          entityId: row.id,
+          operation: SyncOperation.create,
+          payload: {'id': row.id},
+          idempotencyKey: 'customer-create-${row.id}',
+        );
+        added++;
+      }
+      for (final row in suppliers) {
+        if (!_needsServerId(row.serverId) || _skipPartyName(row.name)) {
+          continue;
+        }
+        if (blocked.contains('supplier:${row.id}')) continue;
+        await enqueue(
+          entityType: 'supplier',
+          entityId: row.id,
+          operation: SyncOperation.create,
+          payload: {'id': row.id},
+          idempotencyKey: 'supplier-create-${row.id}',
+        );
+        added++;
+      }
+    });
+    return added;
+  }
+
+  static bool _needsServerId(String? serverId) =>
+      serverId == null || serverId.trim().isEmpty;
+
+  static bool _skipPartyName(String name) {
+    final text = name.trim();
+    if (text.length < 2) return true;
+    const labels = [
+      'الإجمالي',
+      'الاجمالي',
+      'المجموع',
+      'الإجمالي الكلي',
+      'المجموع الإجمالي',
+    ];
+    return labels.any((label) => text == label);
+  }
+
   // ===========================================================================
   // PENDING OPERATIONS
   //
@@ -82,6 +152,16 @@ class SyncQueueRepository {
         },
       )
       ..orderBy([
+            (table) => OrderingTerm.asc(
+          const CustomExpression<int>(
+            "CASE entity_type "
+            "WHEN 'customer' THEN 0 "
+            "WHEN 'supplier' THEN 1 "
+            "WHEN 'product' THEN 2 "
+            "WHEN 'warehouse' THEN 2 "
+            "ELSE 3 END",
+          ),
+        ),
             (table) => OrderingTerm.asc(
           table.createdAt,
         ),

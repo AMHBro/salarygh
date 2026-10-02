@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import '../../../core/di/app_services.dart';
 import '../../../core/paging/list_page.dart';
 import '../../../core/money/party_balance.dart';
+import '../../../core/printing/print_preview.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../purchases/data/supplier_folder.dart';
+import '../../reports/data/local_statements_repository.dart';
 import '../models/supplier_model.dart';
 
 class SuppliersScreen extends StatefulWidget {
@@ -565,6 +567,10 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                     );
                     break;
 
+                  case 'statement':
+                    _showSupplierStatement(supplier);
+                    break;
+
                   case 'details':
                     _showSupplierDetails(
                       supplier,
@@ -599,6 +605,23 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
                         ),
                         Text(
                           'مجلد المورد',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'statement',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.receipt_long_outlined,
+                          size: 17,
+                        ),
+                        SizedBox(
+                          width: 8,
+                        ),
+                        Text(
+                          'كشف حساب',
                         ),
                       ],
                     ),
@@ -1214,6 +1237,53 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
           },
         );
       },
+    );
+  }
+
+  Future<void> _showSupplierStatement(SupplierModel supplier) async {
+    final rows = await LocalStatementsRepository(
+      customersRepository: AppServices.customersRepository,
+      salesRepository: AppServices.salesRepository,
+      database: AppServices.database,
+    ).supplierStatement(supplierId: supplier.id);
+    if (!mounted) {
+      return;
+    }
+    var debit = 0.0;
+    var credit = 0.0;
+    for (final row in rows) {
+      debit += (row['debit_iqd'] as num?)?.toDouble() ?? 0;
+      credit += (row['credit_iqd'] as num?)?.toDouble() ?? 0;
+    }
+    final balance = rows.isEmpty
+        ? supplier.balance
+        : (rows.last['running_balance_iqd'] as num?)?.toDouble() ??
+            credit - debit;
+    showPrintPreview(
+      context,
+      PrintDocument(
+        kind: 'كشف',
+        title: 'كشف ${supplier.name}',
+        partyLabel: 'كشف',
+        party: supplier.name,
+        phone: supplier.phone,
+        columns: const ['التاريخ', 'العملية', 'المرجع', 'مدين', 'دائن', 'الرصيد'],
+        rows: [
+          for (final row in rows)
+            [
+              _formatDate(DateTime.tryParse('${row['invoice_date']}') ?? DateTime.now()),
+              '${row['operation_type'] ?? ''}',
+              '${row['reference_number'] ?? ''}',
+              _formatPrice((row['debit_iqd'] as num?)?.toDouble() ?? 0),
+              _formatPrice((row['credit_iqd'] as num?)?.toDouble() ?? 0),
+              _formatPrice((row['running_balance_iqd'] as num?)?.toDouble() ?? 0),
+            ],
+        ],
+        accountStatement: true,
+        debitTotal: debit,
+        creditTotal: credit,
+        remainingIqd: balance,
+      ),
     );
   }
 

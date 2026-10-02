@@ -1567,7 +1567,7 @@ bool _repeatsFinancialFooter(String line) {
   return keys.any(line.contains);
 }
 
-const kStorefrontUrl = 'https://web-1-inky-six.vercel.app/shop';
+const kStorefrontUrl = 'https://www.hajecamell.store/shop';
 
 bool _keepSheetColumn(String name, PrintSettings settings, bool sale) {
   if (!settings.showItemCode &&

@@ -1,9 +1,11 @@
-import { Body, Controller, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RepresentativeVisitsService, VisitBody } from '../services/representative-visits.service';
 
 @ApiTags('Representative visits')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('visits')
 export class RepresentativeVisitsController {
     constructor(private readonly visits: RepresentativeVisitsService) {}

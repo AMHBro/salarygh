@@ -93,7 +93,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
 
     if (report?.hasOpenSession == true) {
       _showMessage(
-        'توجد جلسة صندوق مفتوحة حالياً.',
+        'توجد جلسة النقد مفتوحة حالياً.',
       );
       return;
     }
@@ -115,7 +115,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
           TextDirection.rtl,
           child: AlertDialog(
             title: const Text(
-              'فتح صندوق جديد',
+              'فتح جلسة جديدة',
             ),
             content: SizedBox(
               width: 430,
@@ -126,7 +126,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
                 CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'أدخل المبلغ الموجود فعلياً في الصندوق عند بداية هذه الجلسة.',
+                    'أدخل المبلغ الموجود فعلياً في النقد عند بداية هذه الجلسة.',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppTheme
@@ -148,7 +148,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
                     decoration:
                     const InputDecoration(
                       labelText:
-                      'رصيد بداية الصندوق',
+                      'رصيد بداية النقد',
                       suffixText:
                       'د.ع',
                     ),
@@ -216,7 +216,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
                   size: 17,
                 ),
                 label: const Text(
-                  'فتح الصندوق',
+                  'فتح النقد',
                 ),
               ),
             ],
@@ -249,7 +249,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
       );
 
       _showMessage(
-        'تم فتح جلسة الصندوق بنجاح.',
+        'تم فتح جلسة النقد بنجاح.',
       );
     } catch (error) {
       _showError(error);
@@ -428,7 +428,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
 
               return AlertDialog(
                 title: const Text(
-                  'مطابقة وإغلاق الصندوق',
+                  'مطابقة وإغلاق النقد',
                 ),
                 content: SizedBox(
                   width: 500,
@@ -464,7 +464,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
                         ),
                         _DialogValueRow(
                           title:
-                          'المفروض في الصندوق',
+                          'المفروض في النقد',
                           value:
                           _formatPrice(
                             session
@@ -640,7 +640,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
       );
 
       _showMessage(
-        'تمت مطابقة وإغلاق جلسة الصندوق.',
+        'تمت مطابقة وإغلاق جلسة النقد.',
       );
     } catch (error) {
       _showError(error);
@@ -716,7 +716,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
     if (report == null) {
       return const Center(
         child: Text(
-          'تعذر تحميل بيانات الصندوق.',
+          'تعذر تحميل بيانات النقد.',
         ),
       );
     }
@@ -817,7 +817,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
             CrossAxisAlignment.start,
             children: [
               Text(
-                'الصندوق',
+                'النقد',
                 style: TextStyle(
                   fontSize: 30,
                   fontWeight:
@@ -830,7 +830,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
                 height: 5,
               ),
               Text(
-                'جلسات الصندوق ومطابقة النقد اليومية.',
+                'جلسات النقد ومطابقة النقد اليومية.',
                 style: TextStyle(
                   fontSize: 13,
                   color: AppTheme
@@ -868,7 +868,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
               size: 17,
             ),
             label: const Text(
-              'فتح صندوق جديد',
+              'فتح جلسة جديدة',
             ),
           )
         else
@@ -935,7 +935,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
           ),
           Expanded(
             child: Text(
-              'يوجد ${report.unassignedInvoicesCount} فاتورة اليوم غير مرتبطة بجلسة صندوق. '
+              'يوجد ${report.unassignedInvoicesCount} فاتورة اليوم غير مرتبطة بجلسة النقد. '
                   'عند فتح جلسة جديدة سيتم ربط الفواتير الحديثة غير المرتبطة بها حسب منطق الاسترجاع.',
               style:
               const TextStyle(
@@ -1165,7 +1165,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
                 child:
                 _SessionMetric(
                   title:
-                  'المفروض بالصندوق',
+                  'المفروض بالنقد',
                   value:
                   _formatPrice(
                     session.expectedCash,
@@ -1200,7 +1200,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
                 height: 10,
               ),
               const Text(
-                'لا توجد جلسة صندوق مفتوحة',
+                'لا توجد جلسة النقد مفتوحة',
                 style:
                 TextStyle(
                   fontSize: 15,
@@ -1212,7 +1212,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
                 height: 5,
               ),
               const Text(
-                'يجب فتح صندوق جديد قبل تسجيل عمليات بيع جديدة.',
+                'يجب فتح جلسة جديدة قبل تسجيل عمليات بيع جديدة.',
                 style:
                 TextStyle(
                   fontSize: 11,
@@ -1234,7 +1234,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
                   size: 16,
                 ),
                 label: const Text(
-                  'فتح صندوق جديد',
+                  'فتح جلسة جديدة',
                 ),
               ),
             ],
@@ -1296,7 +1296,7 @@ class _CashboxScreenState extends State<CashboxScreen> {
               height: 130,
               child: Center(
                 child: Text(
-                  'لم يتم فتح أي جلسة صندوق اليوم.',
+                  'لم يتم فتح أي جلسة النقد اليوم.',
                   style:
                   TextStyle(
                     color: AppTheme

@@ -489,6 +489,12 @@ WHERE remote_product_id = ?
       }
 
       try {
+        final queuedParties = await queueRepository.enqueueUnsyncedParties();
+        if (queuedParties > 0) {
+          debugPrint(
+            '[SYNC] Queued $queuedParties customers/suppliers missing a server id.',
+          );
+        }
         final failed = await queueRepository.getFailedOperations(
           limit: 200,
         );
@@ -497,7 +503,15 @@ WHERE remote_product_id = ?
           if (error.contains('409') || error.contains('SYNC_CONFLICT')) {
             continue;
           }
-          if (!isTransientSyncFailure(StateError(error))) {
+          final catalogRejected = row.entityType == 'product' &&
+              (error.contains('التصنيف غير موجود') ||
+                  error.contains('وحدة القياس') ||
+                  error.contains('status code of 404'));
+          final waitingForParty = error.contains('لم تتم مزامنته') ||
+              error.contains('لم يصل إلى السيرفر');
+          if (!catalogRejected &&
+              !waitingForParty &&
+              !isTransientSyncFailure(StateError(error))) {
             continue;
           }
           await queueRepository.retryFailedOperation(row.id);

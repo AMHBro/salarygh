@@ -567,6 +567,198 @@ class ProductsSyncRemoteGateway
     }
   }
 
+  Future<void> _publishLocalCatalog(Product product) async {
+    final categoryId = product.categoryId?.trim() ?? '';
+    if (categoryId.isNotEmpty) {
+      final serverCategoryId = await _serverCategoryId(categoryId);
+      if (serverCategoryId != categoryId) {
+        await _replaceCategoryId(categoryId, serverCategoryId);
+      }
+    }
+
+    final unitId = product.baseUnitId?.trim() ?? '';
+    if (unitId.isNotEmpty) {
+      final serverUnitId = await _serverUnitId(unitId);
+      if (serverUnitId != unitId) {
+        await _replaceUnitId(unitId, serverUnitId);
+      }
+    }
+  }
+
+  Future<String> _serverCategoryId(String localId) async {
+    final remote = await _apiMaps('/categories');
+    for (final row in remote) {
+      if ('${row['id']}' == localId) {
+        return localId;
+      }
+    }
+
+    final local = await (database.select(database.categories)
+          ..where((table) => table.id.equals(localId)))
+        .getSingleOrNull();
+    final name = local?.nameAr.trim() ?? '';
+    if (name.isEmpty) {
+      return localId;
+    }
+
+    for (final row in remote) {
+      if ('${row['name_ar'] ?? ''}'.trim() == name) {
+        return '${row['id']}';
+      }
+    }
+
+    final response = await apiClient.post(
+      '/categories',
+      data: {'name_ar': name},
+    );
+    final created = await _apiMaps(response.data);
+    if (created.isEmpty || '${created.first['id']}'.isEmpty) {
+      throw StateError('تعذر رفع تصنيف "$name" قبل المادة.');
+    }
+    return '${created.first['id']}';
+  }
+
+  Future<String> _serverUnitId(String localId) async {
+    final remote = await _apiMaps('/units');
+    for (final row in remote) {
+      if ('${row['id']}' == localId) {
+        return localId;
+      }
+    }
+
+    final local = await (database.select(database.units)
+          ..where((table) => table.id.equals(localId)))
+        .getSingleOrNull();
+    final name = local?.nameAr.trim() ?? '';
+    if (name.isEmpty) {
+      return localId;
+    }
+
+    for (final row in remote) {
+      if ('${row['name_ar'] ?? ''}'.trim() == name) {
+        return '${row['id']}';
+      }
+    }
+
+    final response = await apiClient.post(
+      '/units',
+      data: {
+        'name_ar': name,
+        'symbol': (local?.symbol.trim().isNotEmpty ?? false)
+            ? local!.symbol.trim()
+            : name,
+        'is_base_unit': local?.isBaseUnit ?? true,
+      },
+    );
+    final created = await _apiMaps(response.data);
+    if (created.isEmpty || '${created.first['id']}'.isEmpty) {
+      throw StateError('تعذر رفع وحدة "$name" قبل المادة.');
+    }
+    return '${created.first['id']}';
+  }
+
+  Future<List<Map<String, dynamic>>> _apiMaps(dynamic source) async {
+    dynamic raw = source;
+    if (source is String) {
+      final response = await apiClient.get(source);
+      raw = response.data;
+    }
+    if (raw is Map && raw['data'] != null) {
+      raw = raw['data'];
+    }
+    if (raw is Map && raw['id'] != null) {
+      return [Map<String, dynamic>.from(raw)];
+    }
+    if (raw is List) {
+      return [
+        for (final item in raw)
+          if (item is Map) Map<String, dynamic>.from(item),
+      ];
+    }
+    return const [];
+  }
+
+  Future<void> _replaceCategoryId(String localId, String serverId) async {
+    await (database.update(database.products)
+          ..where((table) => table.categoryId.equals(localId)))
+        .write(ProductsCompanion(categoryId: Value(serverId)));
+
+    final local = await (database.select(database.categories)
+          ..where((table) => table.id.equals(localId)))
+        .getSingleOrNull();
+    final server = await (database.select(database.categories)
+          ..where((table) => table.id.equals(serverId)))
+        .getSingleOrNull();
+    if (local != null && server == null) {
+      await database.into(database.categories).insert(
+            CategoriesCompanion.insert(
+              id: serverId,
+              nameAr: local.nameAr,
+              nameEn: Value(local.nameEn),
+              parentId: Value(local.parentId),
+              level: Value(local.level),
+              path: Value(local.path),
+              imageUrl: Value(local.imageUrl),
+              orderIndex: Value(local.orderIndex),
+              isActive: Value(local.isActive),
+              createdAt: Value(local.createdAt),
+              updatedAt: Value(local.updatedAt),
+            ),
+          );
+    }
+    if (local != null) {
+      await (database.delete(database.categories)
+            ..where((table) => table.id.equals(localId)))
+          .go();
+    }
+  }
+
+  Future<void> _replaceUnitId(String localId, String serverId) async {
+    await (database.update(database.products)
+          ..where((table) => table.baseUnitId.equals(localId)))
+        .write(ProductsCompanion(baseUnitId: Value(serverId)));
+    await (database.update(database.saleItems)
+          ..where((table) => table.unitId.equals(localId)))
+        .write(SaleItemsCompanion(unitId: Value(serverId)));
+    await (database.update(database.purchaseItems)
+          ..where((table) => table.unitId.equals(localId)))
+        .write(PurchaseItemsCompanion(unitId: Value(serverId)));
+    await (database.update(database.heldSaleItems)
+          ..where((table) => table.unitId.equals(localId)))
+        .write(HeldSaleItemsCompanion(unitId: Value(serverId)));
+    await (database.update(database.units)
+          ..where((table) => table.parentUnitId.equals(localId)))
+        .write(UnitsCompanion(parentUnitId: Value(serverId)));
+
+    final local = await (database.select(database.units)
+          ..where((table) => table.id.equals(localId)))
+        .getSingleOrNull();
+    final server = await (database.select(database.units)
+          ..where((table) => table.id.equals(serverId)))
+        .getSingleOrNull();
+    if (local != null && server == null) {
+      await database.into(database.units).insert(
+            UnitsCompanion.insert(
+              id: serverId,
+              nameAr: local.nameAr,
+              nameEn: Value(local.nameEn),
+              symbol: local.symbol,
+              parentUnitId: Value(local.parentUnitId),
+              conversionFactor: Value(local.conversionFactor),
+              isBaseUnit: Value(local.isBaseUnit),
+              isActive: Value(local.isActive),
+              createdAt: Value(local.createdAt),
+              updatedAt: Value(local.updatedAt),
+            ),
+          );
+    }
+    if (local != null) {
+      await (database.delete(database.units)
+            ..where((table) => table.id.equals(localId)))
+          .go();
+    }
+  }
+
   // ===========================================================================
   // BUILD API PAYLOAD
   // ===========================================================================
@@ -575,6 +767,9 @@ class ProductsSyncRemoteGateway
   _buildApiPayloadFromLocalProduct(
       Product product,
       ) async {
+    await _publishLocalCatalog(product);
+    product = await _getLocalProduct(product.id) ?? product;
+
     final localVariants =
     await _getLocalVariants(
       product.id,

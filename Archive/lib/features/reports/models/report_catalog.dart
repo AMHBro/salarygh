@@ -56,6 +56,15 @@ const List<ReportDefinition> reportCatalog = [
   ),
   ReportDefinition(
     group: reportGroupCustomers,
+    title: 'كشف حساب مورد',
+    purpose:
+        'حركات الشراء والدفع لمورد واحد خلال الفترة، مع المدين والدائن والرصيد.',
+    path: 'local:supplier-statement',
+    dates: true,
+    localKind: 'supplier',
+  ),
+  ReportDefinition(
+    group: reportGroupCustomers,
     title: 'كشف حساب زبون معين',
     purpose:
         'حركات البيع والقبض لزبون واحد خلال الفترة، مع المدين والدائن.',
@@ -204,14 +213,14 @@ const List<ReportDefinition> reportCatalog = [
   ReportDefinition(
     group: reportGroupCash,
     title: 'التقرير اليومي',
-    purpose: 'مقبوضات ومدفوعات وصافي حركة كل صندوق في كل يوم.',
+    purpose: 'مقبوضات ومدفوعات وصافي الحركة النقدية في كل يوم.',
     path: '/reports/cash/daily',
     dates: true,
   ),
   ReportDefinition(
     group: reportGroupCash,
-    title: 'كشف رصيد الصندوق',
-    purpose: 'رصيد الصناديق المحسوب من آخر جلسة والحركات المسجلة.',
+    title: 'كشف الرصيد النقدي',
+    purpose: 'الرصيد النقدي المحسوب من آخر جلسة والحركات المسجلة.',
     path: '/reports/cash/balances',
   ),
   ReportDefinition(
@@ -323,6 +332,7 @@ const Map<String, String> reportColumnLabels = {
   'invoice_number': 'رقم الفاتورة',
   'invoice_date': 'تاريخ الفاتورة',
   'supplier_name': 'المورد',
+  'running_balance_iqd': 'الرصيد',
   'unit_cost_iqd': 'كلفة الوحدة',
   'line_total_iqd': 'إجمالي البند',
   'unit_price_iqd': 'سعر الوحدة',
@@ -340,7 +350,7 @@ const Map<String, String> reportColumnLabels = {
   'missing_invoice_number': 'الرقم المفقود',
   'report_date': 'اليوم',
   'branch_name': 'الفرع',
-  'cashbox_name': 'الصندوق',
+  'cashbox_name': 'النقد',
   'receipts_iqd': 'المقبوضات',
   'payments_iqd': 'المدفوعات',
   'net_movement_iqd': 'الصافي',
@@ -361,7 +371,7 @@ const Map<String, String> reportColumnLabels = {
   'inventory_value_iqd': 'قيمة المخزون',
   'customer_debit_iqd': 'ذمم الزبائن',
   'supplier_credit_iqd': 'ذمم الموردين',
-  'cash_iqd': 'الصندوق',
+  'cash_iqd': 'النقد',
   'capital_iqd': 'رأس المال التقديري',
   'capital_balance': 'رأس المال بعد الحركة',
   'effect_note': 'أثر الحركة',

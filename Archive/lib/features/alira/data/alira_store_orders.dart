@@ -68,6 +68,7 @@ class AliraStoreOrders {
     int? paidAmount,
     String? partyId,
     String? priceType,
+    String? notes,
     required List<AliraStoreLine> lines,
   }) async {
     lastQueued = false;
@@ -78,6 +79,7 @@ class AliraStoreOrders {
       'partyName': partyName,
       'partyPhone': partyPhone,
       'partyAddress': partyAddress,
+      'notes': ?_locationNote(notes),
       'paymentType': paymentType,
       'paidAmount': ?paidAmount,
       'partyId': partyId,
@@ -189,6 +191,8 @@ class AliraStoreOrders {
         'payment_type': payload['paymentType'],
         if (payload['paidAmount'] != null) 'paid_amount': payload['paidAmount'],
         if (priceType.isNotEmpty) 'price_type': priceType,
+        if ('${payload['notes'] ?? ''}'.trim().isNotEmpty)
+          'notes': '${payload['notes']}'.trim(),
       },
       options: Options(headers: headers),
     );
@@ -252,6 +256,15 @@ class AliraStoreOrders {
     final items = await _readQueue();
     items.add(payload);
     await _writeQueue(items);
+  }
+
+  static String? _locationNote(String? notes) {
+    final text = notes?.trim() ?? '';
+    if (text.isEmpty) return null;
+    if (text.contains('http://') || text.contains('https://')) {
+      return 'موقع المندوب: $text';
+    }
+    return 'موقع المندوب: https://maps.google.com/?q=${Uri.encodeComponent(text)}';
   }
 
   static String _idempotencyKey() {

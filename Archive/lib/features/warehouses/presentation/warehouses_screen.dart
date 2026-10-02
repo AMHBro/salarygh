@@ -756,6 +756,36 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
           width: 10,
         ),
 
+        OutlinedButton.icon(
+          onPressed: _warehouses.length < 2 ? null : _showTransferAllDialog,
+          icon: const Icon(
+            Icons.move_down_rounded,
+            size: 18,
+          ),
+          label: const Text(
+            'نقل كل المواد',
+          ),
+        ),
+
+        const SizedBox(
+          width: 10,
+        ),
+
+        OutlinedButton.icon(
+          onPressed: _warehouses.isEmpty ? null : _showAddMaterialsDialog,
+          icon: const Icon(
+            Icons.inventory_outlined,
+            size: 18,
+          ),
+          label: const Text(
+            'إضافة مواد',
+          ),
+        ),
+
+        const SizedBox(
+          width: 10,
+        ),
+
         ElevatedButton.icon(
           onPressed: _warehouses.isEmpty || choices.isEmpty
               ? null
@@ -2226,6 +2256,278 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                     child: const Text(
                       'حفظ الحركة',
                     ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    quantityController.dispose();
+    noteController.dispose();
+  }
+
+  // ===========================================================================
+  // TRANSFER ALL
+  // ===========================================================================
+
+  int _positiveLines(String warehouseId) {
+    var count = 0;
+    for (final entry in _stockQty.entries) {
+      if (entry.key.startsWith('$warehouseId|') && entry.value > 0) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  Future<void> _showTransferAllDialog() async {
+    if (_warehouses.length < 2) return;
+
+    String fromWarehouseId = _warehouses.first.id;
+    String toWarehouseId = _warehouses[1].id;
+    var busy = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final lines = _positiveLines(fromWarehouseId);
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                title: const Text('نقل كل المواد'),
+                content: SizedBox(
+                  width: 480,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'تنتقل كل الكميات الموجبة من المخزن الأول إلى الثاني. رأس المال لا يتغير لأن الكمية تنتقل ولا تُباع ولا تُشترى.',
+                      ),
+                      const SizedBox(height: 14),
+                      _DialogDropdown(
+                        title: 'من مخزن',
+                        value: fromWarehouseId,
+                        items: _warehouses.map((warehouse) => warehouse.id).toList(),
+                        labels: {
+                          for (final warehouse in _warehouses)
+                            warehouse.id: warehouse.name,
+                        },
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setDialogState(() => fromWarehouseId = value);
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      _DialogDropdown(
+                        title: 'إلى مخزن',
+                        value: toWarehouseId,
+                        items: _warehouses.map((warehouse) => warehouse.id).toList(),
+                        labels: {
+                          for (final warehouse in _warehouses)
+                            warehouse.id: warehouse.name,
+                        },
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setDialogState(() => toWarehouseId = value);
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text('المواد ذات الكمية: $lines'),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: busy ? null : () => Navigator.pop(context),
+                    child: const Text('إلغاء'),
+                  ),
+                  ElevatedButton(
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            if (fromWarehouseId == toWarehouseId) {
+                              _showMessage('اختر مخزنين مختلفين.');
+                              return;
+                            }
+                            if (lines <= 0) {
+                              _showMessage('المخزن المصدر فارغ.');
+                              return;
+                            }
+                            setDialogState(() => busy = true);
+                            try {
+                              final moved = await _inventoryRepository.transferAllStock(
+                                fromWarehouseId: fromWarehouseId,
+                                toWarehouseId: toWarehouseId,
+                                note: 'نقل كل المواد',
+                              );
+                              if (!context.mounted) return;
+                              Navigator.pop(context);
+                              await _loadData();
+                              _showMessage(
+                                'نُقلت $moved مادة. اضغط مزامنة لرفع التحويل إلى السيرفر.',
+                              );
+                            } catch (error) {
+                              if (context.mounted) {
+                                setDialogState(() => busy = false);
+                              }
+                              if (!mounted) return;
+                              _showMessage(_errorMessage(error));
+                            }
+                          },
+                    child: const Text('نقل الكل'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showAddMaterialsDialog() async {
+    if (_warehouses.isEmpty) return;
+    final products = await _productsRepository.getProducts();
+    final choices = <_InventoryVariantChoice>[];
+    for (final product in products) {
+      if (!product.isActive) continue;
+      for (final variant in product.variants) {
+        if (!variant.isActive || variant.deletedAt != null) continue;
+        choices.add(
+          _InventoryVariantChoice(
+            variantId: variant.id,
+            productId: product.id,
+            label: _variantDisplayName(
+              product: product,
+              variantName: variant.displayName,
+            ),
+            barcode: variant.barcode.trim().isNotEmpty
+                ? variant.barcode
+                : product.barcode,
+          ),
+        );
+      }
+    }
+    if (!mounted) return;
+    if (choices.isEmpty) {
+      _showMessage('لا توجد مواد لإضافتها.');
+      return;
+    }
+
+    String warehouseId = _warehouses.first.id;
+    String variantId = choices.first.variantId;
+    final quantityController = TextEditingController();
+    final noteController = TextEditingController(text: 'إضافة مواد');
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                title: const Text('إضافة مواد'),
+                content: SizedBox(
+                  width: 560,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'تزيد كمية المخزن فقط. لا تُنشئ فاتورة شراء ولا بيع، ولا تغيّر رأس المال.',
+                        ),
+                        const SizedBox(height: 14),
+                        _DialogDropdown(
+                          title: 'المخزن',
+                          value: warehouseId,
+                          items: _warehouses.map((warehouse) => warehouse.id).toList(),
+                          labels: {
+                            for (final warehouse in _warehouses)
+                              warehouse.id: warehouse.name,
+                          },
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setDialogState(() => warehouseId = value);
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        _DialogDropdown(
+                          title: 'المادة',
+                          value: variantId,
+                          items: choices.map((choice) => choice.variantId).toList(),
+                          labels: {
+                            for (final choice in choices)
+                              choice.variantId: choice.barcode.trim().isEmpty
+                                  ? choice.label
+                                  : '${choice.label} — ${choice.barcode}',
+                          },
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setDialogState(() => variantId = value);
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        _DialogField(
+                          title: 'الكمية',
+                          controller: quantityController,
+                          hint: '0',
+                        ),
+                        const SizedBox(height: 14),
+                        _DialogField(
+                          title: 'ملاحظة',
+                          controller: noteController,
+                          hint: 'إضافة مواد',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('إغلاق'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final quantity = double.tryParse(
+                            quantityController.text.trim(),
+                          ) ??
+                          0;
+                      if (quantity <= 0) {
+                        _showMessage('أدخل كمية صحيحة.');
+                        return;
+                      }
+                      try {
+                        await _inventoryRepository.addMovement(
+                          variantId: variantId,
+                          warehouseId: warehouseId,
+                          type: StockMovementType.adjustmentIn,
+                          quantity: quantity,
+                          referenceType: 'MATERIAL_ADD',
+                          note: noteController.text.trim().isEmpty
+                              ? 'إضافة مواد بدون شراء أو بيع'
+                              : noteController.text.trim(),
+                        );
+                        quantityController.clear();
+                        await _loadData();
+                        _showMessage(
+                          'أُضيفت الكمية. رأس المال بقي كما هو. اضغط مزامنة لرفعها.',
+                        );
+                      } catch (error) {
+                        if (!mounted) return;
+                        _showMessage(_errorMessage(error));
+                      }
+                    },
+                    child: const Text('إضافة الكمية'),
                   ),
                 ],
               ),

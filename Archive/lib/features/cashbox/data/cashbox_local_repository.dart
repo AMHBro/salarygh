@@ -24,7 +24,7 @@ class CashboxLocalRepository {
   }) async {
     if (openingBalance < 0) {
       throw StateError(
-        'رصيد بداية الصندوق لا يمكن أن يكون سالباً.',
+        'رصيد بداية النقد لا يمكن أن يكون سالباً.',
       );
     }
 
@@ -33,7 +33,7 @@ class CashboxLocalRepository {
 
     if (existingOpen != null) {
       throw StateError(
-        'توجد جلسة صندوق مفتوحة حالياً.',
+        'توجد جلسة النقد مفتوحة حالياً.',
       );
     }
 
@@ -89,7 +89,7 @@ class CashboxLocalRepository {
         //
         // هذا مهم لحالة الانتقال من V20 -> V21:
         //
-        // إذا المستخدم أغلق الصندوق ثم أنشأ فاتورة قبل إضافة
+        // إذا المستخدم أغلق النقد ثم أنشأ فاتورة قبل إضافة
         // نظام Sessions، تكون الفاتورة cashboxSessionId = NULL.
         //
         // عند فتح جلسة جديدة بنفس اليوم نربط هذه الفواتير بها.
@@ -177,7 +177,7 @@ class CashboxLocalRepository {
 
     if (created == null) {
       throw StateError(
-        'تعذر فتح جلسة الصندوق.',
+        'تعذر فتح جلسة النقد.',
       );
     }
 
@@ -266,7 +266,7 @@ class CashboxLocalRepository {
   }) async {
     if (openingBalance < 0) {
       throw StateError(
-        'رصيد بداية الصندوق لا يمكن أن يكون سالباً.',
+        'رصيد بداية النقد لا يمكن أن يكون سالباً.',
       );
     }
 
@@ -277,7 +277,7 @@ class CashboxLocalRepository {
 
     if (session == null) {
       throw StateError(
-        'جلسة الصندوق غير موجودة.',
+        'جلسة النقد غير موجودة.',
       );
     }
 
@@ -286,7 +286,7 @@ class CashboxLocalRepository {
         .toUpperCase() !=
         'OPEN') {
       throw StateError(
-        'لا يمكن تعديل رصيد جلسة صندوق مغلقة.',
+        'لا يمكن تعديل رصيد جلسة النقد مغلقة.',
       );
     }
 
@@ -335,7 +335,7 @@ class CashboxLocalRepository {
 
     if (session == null) {
       throw StateError(
-        'جلسة الصندوق غير موجودة.',
+        'جلسة النقد غير موجودة.',
       );
     }
 
@@ -344,7 +344,7 @@ class CashboxLocalRepository {
         .toUpperCase() !=
         'OPEN') {
       throw StateError(
-        'جلسة الصندوق مغلقة مسبقاً.',
+        'جلسة النقد مغلقة مسبقاً.',
       );
     }
 
@@ -627,7 +627,7 @@ class CashboxLocalRepository {
 
     if (session == null) {
       throw StateError(
-        'جلسة الصندوق غير موجودة.',
+        'جلسة النقد غير موجودة.',
       );
     }
 

@@ -526,6 +526,60 @@ class InventoryLocalRepository {
     );
   }
 
+  /// ينقل كل الرصيد الموجب من مخزن إلى آخر. كل مادة تُسجَّل تحويلاً مستقلاً.
+  Future<int> transferAllStock({
+    required String fromWarehouseId,
+    required String toWarehouseId,
+    String? note,
+    String? userId,
+  }) async {
+    if (fromWarehouseId == toWarehouseId) {
+      throw StateError(
+        'لا يمكن التحويل إلى نفس المخزن.',
+      );
+    }
+
+    await _validateWarehouseExists(fromWarehouseId);
+    await _validateWarehouseExists(toWarehouseId);
+
+    final balances = await (database.select(database.stockBalances)
+          ..where((table) => table.warehouseId.equals(fromWarehouseId)))
+        .get();
+    final lines = balances.where((row) => row.quantity > 0).toList();
+    if (lines.isEmpty) {
+      throw StateError(
+        'لا توجد كمية في المخزن المصدر.',
+      );
+    }
+
+    var moved = 0;
+    for (final row in lines) {
+      final variant = await (database.select(database.productVariants)
+            ..where(
+              (table) =>
+                  table.id.equals(row.variantId) & table.deletedAt.isNull(),
+            ))
+          .getSingleOrNull();
+      if (variant == null) continue;
+      await transferStock(
+        variantId: row.variantId,
+        fromWarehouseId: fromWarehouseId,
+        toWarehouseId: toWarehouseId,
+        quantity: row.quantity,
+        note: note,
+        userId: userId,
+      );
+      moved++;
+    }
+
+    if (moved == 0) {
+      throw StateError(
+        'لا توجد كمية قابلة للنقل في هذا المخزن.',
+      );
+    }
+    return moved;
+  }
+
   // ===========================================================================
   // MOVEMENTS
   // ===========================================================================

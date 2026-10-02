@@ -46,6 +46,8 @@ class _ReportsScreenState extends State<ReportsScreen>
 
   late ReportDefinition _report;
   String? _customerId;
+  String? _supplierId;
+  String _supplierLabel = '';
   String? _groupName;
   String? _representativeId;
   String? _variantId;
@@ -63,7 +65,7 @@ class _ReportsScreenState extends State<ReportsScreen>
     (reportGroupWarehouses, 'المخازن'),
     (reportGroupCustomers, 'الزبائن'),
     (reportGroupMaterials, 'المواد'),
-    (reportGroupCash, 'الصندوق ورأس المال'),
+    (reportGroupCash, 'رأس المال والنقد'),
     (reportGroupProfits, 'الأرباح'),
   ];
 
@@ -171,6 +173,14 @@ class _ReportsScreenState extends State<ReportsScreen>
         (_representativeId == null || _representativeId!.isEmpty)) {
       setState(() {
         _error = 'اختر المندوب.';
+      });
+      return;
+    }
+
+    if (_report.localKind == 'supplier' &&
+        (_supplierId == null || _supplierId!.isEmpty)) {
+      setState(() {
+        _error = 'اختر المورد.';
       });
       return;
     }
@@ -298,6 +308,12 @@ class _ReportsScreenState extends State<ReportsScreen>
       case 'representative':
         return _localStatements.representativeStatement(
           representativeId: _representativeId!,
+          from: from,
+          to: to,
+        );
+      case 'supplier':
+        return _localStatements.supplierStatement(
+          supplierId: _supplierId!,
           from: from,
           to: to,
         );
@@ -520,6 +536,7 @@ class _ReportsScreenState extends State<ReportsScreen>
               if (_report.localKind == 'customersByRepresentative' ||
                   _report.localKind == 'representative')
                 _representativePicker(),
+              if (_report.localKind == 'supplier') _supplierPicker(),
               if (_report.customer) _customerPicker(),
               if (_report.variant) _variantPicker(),
               if (_report.localKind == 'productInvoices') _productPicker(),
@@ -695,6 +712,28 @@ class _ReportsScreenState extends State<ReportsScreen>
     );
   }
 
+  Widget _supplierPicker() {
+    return _QueryPicker(
+      label: 'المورد',
+      load: (query, limit, offset) async {
+        final page = await AppServices.suppliersRepository.pageSuppliers(
+          search: query,
+          limit: limit,
+          offset: offset,
+        );
+        return [
+          for (final supplier in page.items) _Choice(supplier.id, supplier.name),
+        ];
+      },
+      onChanged: (choice) {
+        setState(() {
+          _supplierId = choice?.id;
+          _supplierLabel = choice?.label ?? '';
+        });
+      },
+    );
+  }
+
   Widget _customerPicker() {
     return _QueryPicker(
       label: 'الزبون',
@@ -818,6 +857,12 @@ class _ReportsScreenState extends State<ReportsScreen>
 
     if (_report.customer && (_customerId ?? '').isNotEmpty && _customerLabel.isNotEmpty) {
       return _StatementHead(_customerLabel, 'customer_name');
+    }
+
+    if (_report.localKind == 'supplier' &&
+        (_supplierId ?? '').isNotEmpty &&
+        _supplierLabel.isNotEmpty) {
+      return _StatementHead(_supplierLabel, 'supplier_name');
     }
 
     if (_report.localKind == 'productInvoices' &&

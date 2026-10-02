@@ -20,7 +20,9 @@ bool isTransientSyncFailure(Object error) {
   }
 
   final text = error.toString().toLowerCase();
-  if (text.contains('sync_defer')) {
+  if (text.contains('sync_defer') ||
+      text.contains('لم تتم مزامنته') ||
+      text.contains('لم يصل إلى السيرفر')) {
     return true;
   }
   if (text.contains('sync_conflict') ||

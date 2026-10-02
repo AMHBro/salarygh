@@ -10,7 +10,6 @@ import '../../settings/data/company_settings_repository.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../customers/models/customer_model.dart';
 import '../../products/models/product_model.dart';
-import '../../products/models/unit_model.dart';
 import '../../products/models/product_variant_model.dart';
 import '../../representatives/models/representative_model.dart';
 import '../../warehouses/models/warehouse_model.dart';
@@ -102,8 +101,6 @@ class _SalesScreenState extends State<SalesScreen> {
 
   List<ProductModel> _products = [];
 
-  List<UnitModel> _units = [];
-
   List<WarehouseModel> _warehouses = [];
 
   List<CustomerModel> _suggestions = [];
@@ -169,7 +166,6 @@ class _SalesScreenState extends State<SalesScreen> {
     _customerFocus.addListener(_onCustomerFocus);
     _loadData();
     _loadUsdRate();
-    _loadUnits();
   }
 
   void _onCustomerFocus() {
@@ -209,36 +205,6 @@ class _SalesScreenState extends State<SalesScreen> {
         _usdRate = rate;
       });
     } catch (_) {}
-  }
-
-  Future<void> _loadUnits() async {
-    try {
-      final units = await AppServices.unitsRepository.getUnits();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _units = units;
-      });
-    } catch (_) {}
-  }
-
-  double _cartonFactor(ProductModel product) {
-    if (product.piecesPerCarton > 1) {
-      return product.piecesPerCarton;
-    }
-
-    final baseId = product.baseUnitId?.trim() ?? '';
-    for (final unit in _units) {
-      if (unit.isActive &&
-          baseId.isNotEmpty &&
-          unit.parentUnitId == baseId &&
-          unit.conversionFactor > 1) {
-        return unit.conversionFactor;
-      }
-    }
-
-    return 1;
   }
 
   Future<void> _changeSalePieces(int index, int pieces) async {
@@ -1030,19 +996,6 @@ class _SalesScreenState extends State<SalesScreen> {
   // VARIANTS
   // ===========================================================================
 
-  List<ProductVariantModel>
-  _activeVariants(
-      ProductModel product,
-      ) {
-    return product.variants
-        .where(
-          (variant) =>
-      variant.isActive &&
-          variant.deletedAt == null,
-    )
-        .toList();
-  }
-
   ProductVariantModel? _variantById(
       ProductModel product,
       String? variantId,
@@ -1098,57 +1051,6 @@ class _SalesScreenState extends State<SalesScreen> {
     }
     return true;
   }
-
-  double _productTotalStock(
-      ProductModel product,
-      ) {
-    double total = 0;
-
-    for (final variant
-    in _activeVariants(product)) {
-      total +=
-          _availableVariantStock(
-            variant.id,
-          );
-    }
-
-    return total;
-  }
-
-  double _priceForVariant(
-      ProductVariantModel variant,
-      PriceType type,
-      ) {
-    switch (type) {
-      case PriceType.cost:
-        return variant.costPrice;
-
-      case PriceType.representative:
-        return variant
-            .representativePrice;
-
-      case PriceType.wholesale:
-        return variant.wholesalePrice;
-
-      case PriceType.retail:
-        return variant.retailPrice;
-    }
-  }
-
-  String _variantDisplayName(
-      ProductVariantModel variant,
-      ) {
-    final name =
-    variant.displayName.trim();
-
-    if (name.isEmpty ||
-        name == 'الخيار الرئيسي') {
-      return 'الخيار الرئيسي';
-    }
-
-    return name;
-  }
-
 
   // ===========================================================================
   // TOTALS
@@ -1724,7 +1626,8 @@ class _SalesScreenState extends State<SalesScreen> {
                   child:
                   DropdownButtonFormField<
                       String>(
-                    value:
+                    key: ValueKey(_selectedRepresentativeId),
+                    initialValue:
                     _selectedRepresentativeId,
                     isExpanded: true,
                     items: [
@@ -1788,7 +1691,8 @@ class _SalesScreenState extends State<SalesScreen> {
                   child:
                   DropdownButtonFormField<
                       String>(
-                    value:
+                    key: ValueKey(_selectedWarehouseId),
+                    initialValue:
                     _selectedWarehouseId,
                     isExpanded: true,
                     hint: const Text(
@@ -2216,286 +2120,8 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   // ===========================================================================
-  // VARIANT PICKER
-  // ===========================================================================
-
-  Future<void> _openVariantPicker(
-      ProductModel product,
-      ) async {
-    final variants =
-    _activeVariants(
-      product,
-    );
-
-    if (variants.isEmpty) {
-      _showMessage(
-        'لا توجد خيارات متاحة لهذه المادة.',
-      );
-
-      return;
-    }
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return Directionality(
-          textDirection:
-          TextDirection.rtl,
-          child: AlertDialog(
-            title: Text(
-              'اختيار خيار - ${product.name}',
-            ),
-            content: SizedBox(
-              width: 620,
-              height: 420,
-              child:
-              ListView.separated(
-                itemCount:
-                variants.length,
-                separatorBuilder:
-                    (_, __) {
-                  return const Divider(
-                    height: 1,
-                  );
-                },
-                itemBuilder: (
-                    context,
-                    index,
-                    ) {
-                  final variant =
-                  variants[
-                  index];
-
-                  final stock =
-                  _availableVariantStock(
-                    variant.id,
-                  );
-
-                  final price =
-                  _priceForVariant(
-                    variant,
-                    _selectedPriceType,
-                  );
-
-                  return ListTile(
-                    enabled:
-                    stock > 0,
-                    leading:
-                    Container(
-                      width: 42,
-                      height: 42,
-                      alignment:
-                      Alignment
-                          .center,
-                      decoration:
-                      BoxDecoration(
-                        color:
-                        const Color(
-                          0xFFF5F5F7,
-                        ),
-                        borderRadius:
-                        BorderRadius
-                            .circular(
-                          10,
-                        ),
-                      ),
-                      child:
-                      const Icon(
-                        Icons
-                            .tune_rounded,
-                        size: 18,
-                      ),
-                    ),
-                    title: Text(
-                      _variantDisplayName(
-                        variant,
-                      ),
-                    ),
-                    subtitle: Text(
-                      stock <= 0
-                          ? 'نافد من المخزن'
-                          : 'المتوفر ${_formatQuantity(stock)} • ${_formatPrice(price)}',
-                    ),
-                    trailing:
-                    stock <= 0
-                        ? const Icon(
-                      Icons
-                          .block_rounded,
-                      size:
-                      19,
-                    )
-                        : const Icon(
-                      Icons
-                          .add_circle_outline_rounded,
-                    ),
-                    onTap:
-                    stock <= 0
-                        ? null
-                        : () {
-                      Navigator.pop(
-                        dialogContext,
-                      );
-
-                      _addVariantToCart(
-                        product,
-                        variant,
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(
-                    dialogContext,
-                  );
-                },
-                child:
-                const Text(
-                  'رجوع',
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // ===========================================================================
   // CART
   // ===========================================================================
-
-  Future<void> _addVariantToCart(
-      ProductModel product,
-      ProductVariantModel variant,
-      ) async {
-    final unitId =
-    product.baseUnitId?.trim();
-
-    if (unitId == null ||
-        unitId.isEmpty) {
-      _showMessage(
-        'هذا المنتج لا يحتوي على وحدة أساسية، لذلك لا يمكن إضافته للبيع.',
-      );
-
-      return;
-    }
-
-    if (!variant.isActive ||
-        variant.deletedAt != null) {
-      _showMessage(
-        'هذا الخيار غير فعال.',
-      );
-
-      return;
-    }
-
-    if (await FloorStore.isLocked(
-      AppServices.database,
-      variant.id,
-    )) {
-      _showMessage(
-        'هذه المادة مقفلة بعد بيع متعارض. تنتظر مراجعة المدير.',
-      );
-      return;
-    }
-
-    final available =
-    _availableVariantStock(
-      variant.id,
-    );
-
-    if (available < 1) {
-      _showMessage(
-        'هذا الخيار غير متوفر في المخزن.',
-      );
-
-      return;
-    }
-
-    final existingIndex =
-    _cart.indexWhere(
-          (item) =>
-      item.variantId ==
-          variant.id,
-    );
-
-    if (existingIndex >= 0) {
-      final current =
-      _cart[
-      existingIndex];
-
-      final factor = current.unitFactor <= 0
-          ? 1.0
-          : current.unitFactor;
-      if ((current.quantity + 1) * factor +
-              current.loosePieces >
-          available) {
-        _showMessage(
-          'لا توجد كمية إضافية متوفرة من هذا الخيار.',
-        );
-
-        return;
-      }
-      if (!await _serverAllows(
-        variant.id,
-        (current.quantity + 1) * factor + current.loosePieces,
-      )) {
-        return;
-      }
-
-      setState(() {
-        _cart[existingIndex] =
-            current.copyWith(
-              quantity:
-              current.quantity + 1,
-            );
-      });
-
-      return;
-    }
-
-    final unitPrice =
-    _priceForVariant(
-      variant,
-      _selectedPriceType,
-    );
-
-    setState(() {
-      _cart.add(
-        CartItemModel(
-          product: product,
-          variantId:
-          variant.id,
-          unitId: unitId,
-          unitFactor: _cartonFactor(product),
-          quantity: 0,
-          loosePieces: 0,
-          priceType:
-          _selectedPriceType,
-          unitPriceOverride:
-          unitPrice,
-
-          costPriceOverride:
-          variant.costPrice,
-
-          representativePriceOverride:
-          variant
-              .representativePrice,
-
-          wholesalePriceOverride:
-          variant
-              .wholesalePrice,
-
-          retailPriceOverride:
-          variant.retailPrice,
-        ),
-      );
-    });
-  }
 
   Future<void> _changeQuantity(
       int index,
@@ -3328,11 +2954,7 @@ class _SalesScreenState extends State<SalesScreen> {
                       itemCount:
                       heldSales
                           .length,
-                      separatorBuilder:
-                          (
-                          _,
-                          __,
-                          ) =>
+                      separatorBuilder: (_, _) =>
                       const SizedBox(
                         height:
                         8,

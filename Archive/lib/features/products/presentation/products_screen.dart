@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
@@ -3662,7 +3661,8 @@ class _DropdownField extends StatelessWidget {
           height: 6,
         ),
         DropdownButtonFormField<String>(
-          value: value,
+          key: ValueKey(value),
+          initialValue: value,
           isExpanded: true,
           items: items,
           hint: Text(

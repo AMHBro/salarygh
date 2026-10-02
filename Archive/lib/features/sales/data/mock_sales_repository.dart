@@ -200,7 +200,7 @@ class MockSalesRepository {
       ) {
     try {
       return _sales.firstWhere(
-            (sale) => sale.id == id,
+            (sale) => sale.id == '$id',
       );
     } catch (_) {
       return null;

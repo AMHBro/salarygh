@@ -509,7 +509,8 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
             child:
             DropdownButtonFormField<
                 String>(
-              value:
+              key: ValueKey(_paymentFilter),
+              initialValue:
               _paymentFilter,
               isExpanded: true,
               decoration:

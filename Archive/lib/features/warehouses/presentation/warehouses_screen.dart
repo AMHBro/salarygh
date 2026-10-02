@@ -3557,7 +3557,8 @@ class _DialogDropdown extends StatelessWidget {
           height: 7,
         ),
         DropdownButtonFormField<String>(
-          value: items.contains(value) ? value : items.first,
+          key: ValueKey(items.contains(value) ? value : items.first),
+          initialValue: items.contains(value) ? value : items.first,
           isExpanded: true,
           items: items
               .map(

@@ -1021,73 +1021,6 @@ class _Paper extends StatelessWidget {
   }
 }
 
-class _IdentityStrip extends StatelessWidget {
-  final PrintDocument document;
-
-  const _IdentityStrip({required this.document});
-
-  @override
-  Widget build(BuildContext context) {
-    final cells = <(String, String)>[
-      if (document.party.trim().isNotEmpty)
-        (document.partyLabel.trim().isEmpty ? 'الزبون' : document.partyLabel, document.party.trim()),
-      if (document.printedDate.trim().isNotEmpty) ('التاريخ', document.printedDate.trim()),
-      if (document.printedTime.trim().isNotEmpty) ('الوقت', document.printedTime.trim()),
-      if (document.documentType.trim().isNotEmpty)
-        (
-          document.documentTypeLabel.trim().isEmpty
-              ? 'نوع القائمة'
-              : document.documentTypeLabel,
-          document.documentType.trim(),
-        ),
-    ];
-
-    return Row(
-      children: [
-        for (var index = 0; index < cells.length; index++) ...[
-          if (index > 0) const SizedBox(width: 8),
-          Expanded(child: _FactCell(label: cells[index].$1, value: cells[index].$2)),
-        ],
-      ],
-    );
-  }
-}
-
-class _FactCell extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _FactCell({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F7F9),
-        border: Border.all(color: AppTheme.borderColor),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 11, color: AppTheme.secondaryTextColor),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            _arabic(value),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _MetaLines extends StatelessWidget {
   final List<String> lines;
 
@@ -1143,40 +1076,6 @@ class _LabeledLine extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _TotalsBox extends StatelessWidget {
-  final List<String> totals;
-
-  const _TotalsBox({required this.totals});
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        width: 280,
-        decoration: BoxDecoration(
-          border: Border.all(color: AppTheme.borderColor),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          children: [
-            for (var index = 0; index < totals.length; index++)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  border: index == totals.length - 1
-                      ? null
-                      : const Border(bottom: BorderSide(color: AppTheme.subtleBorderColor)),
-                ),
-                child: _LabeledLine(line: totals[index]),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -1472,30 +1371,6 @@ String _companyHtml(DocumentHeader header, PrintSettings settings) {
   <div>${_escape(phones)}</div>
 </div>
 ''';
-}
-
-String _pairHtml(String line) {
-  final text = _arabic(line);
-  final split = text.indexOf(':');
-  if (split <= 0) {
-    return '<div class="pair"><span></span><b>${_escape(text)}</b></div>';
-  }
-  return '<div class="pair"><span>${_escape(text.substring(0, split).trim())}</span><b>${_escape(text.substring(split + 1).trim())}</b></div>';
-}
-
-String _identityHtml(PrintDocument document) {
-  if (!document.hasIdentity) return '';
-  final cells = <String>[
-    if (document.party.trim().isNotEmpty)
-      '<div class="fact"><span>${_escape(document.partyLabel.trim().isEmpty ? 'الزبون' : document.partyLabel)}</span><strong>${_escape(_arabic(document.party.trim()))}</strong></div>',
-    if (document.printedDate.trim().isNotEmpty)
-      '<div class="fact"><span>التاريخ</span><strong>${_escape(document.printedDate.trim())}</strong></div>',
-    if (document.printedTime.trim().isNotEmpty)
-      '<div class="fact"><span>الوقت</span><strong>${_escape(document.printedTime.trim())}</strong></div>',
-    if (document.documentType.trim().isNotEmpty)
-      '<div class="fact"><span>${_escape(document.documentTypeLabel.trim().isEmpty ? 'نوع القائمة' : document.documentTypeLabel)}</span><strong>${_escape(_arabic(document.documentType.trim()))}</strong></div>',
-  ];
-  return '<div class="facts">${cells.join()}</div>';
 }
 
 List<String> _localPrintSections(PrintDocument document) {

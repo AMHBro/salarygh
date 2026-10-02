@@ -1108,7 +1108,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
           )
         else
           DropdownButtonFormField<String>(
-            value: _selectedWarehouseId,
+            key: ValueKey(_selectedWarehouseId),
+            initialValue: _selectedWarehouseId,
             isExpanded: true,
             decoration: const InputDecoration(
               hintText: 'اختر المخزن',

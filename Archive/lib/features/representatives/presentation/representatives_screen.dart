@@ -309,7 +309,8 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
           SizedBox(
             width: 170,
             child: DropdownButtonFormField<String>(
-              value: _statusFilter,
+              key: ValueKey(_statusFilter),
+              initialValue: _statusFilter,
               isExpanded: true,
               items: const [
                 DropdownMenuItem(

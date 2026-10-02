@@ -170,7 +170,7 @@ class UnitsRepository {
         },
       );
 
-      return getUnits();
+      return await getUnits();
     } on DioException catch (error) {
       throw StateError(
         _messageFromDio(error),

@@ -92,6 +92,12 @@ test('PostgreSQL sales pipeline deducts stock and ages the unpaid invoice', asyn
     assert.ok(days > 60 && days <= 90);
   } finally {
     await client.end();
-    await postgres.stop();
+    try {
+      await postgres.stop();
+    } catch (error) {
+      if (error?.code !== 'EBUSY') {
+        throw error;
+      }
+    }
   }
 });

@@ -174,7 +174,7 @@ class CategoriesRepository {
         },
       );
 
-      return getCategories();
+      return await getCategories();
     } on DioException catch (error) {
       throw StateError(
         _messageFromDio(error),

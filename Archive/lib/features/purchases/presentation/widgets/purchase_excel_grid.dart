@@ -545,7 +545,7 @@ class PurchaseExcelGridState extends State<PurchaseExcelGrid> {
                     shrinkWrap: true,
                     itemCount: _searchResults.length +
                         ((_searchPage > 1 || _searchHasNext) ? 1 : 0),
-                    separatorBuilder: (_, __) {
+                    separatorBuilder: (_, _) {
                       return const Divider(
                         height: 1,
                         indent: 12,

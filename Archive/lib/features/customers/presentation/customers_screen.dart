@@ -330,7 +330,8 @@ class _CustomersScreenState
             child:
             DropdownButtonFormField<
                 String>(
-              value: _selectedFilter,
+              key: ValueKey(_selectedFilter),
+              initialValue: _selectedFilter,
               isExpanded: true,
               items: const [
                 DropdownMenuItem(
@@ -918,7 +919,8 @@ class _CustomersScreenState
                       ],
                       const SizedBox(height: 14),
                       DropdownButtonFormField<String>(
-                        value: selectedRepresentativeId ?? '',
+                        key: ValueKey(selectedRepresentativeId ?? ''),
+                        initialValue: selectedRepresentativeId ?? '',
                         isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'المندوب',
@@ -1492,7 +1494,8 @@ class _CustomersScreenState
                       ),
                       DropdownButtonFormField<
                           String>(
-                        value: method,
+                        key: ValueKey(method),
+                        initialValue: method,
                         items: const [
                           DropdownMenuItem(
                             value: 'CASH',

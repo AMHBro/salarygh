@@ -14,4 +14,4 @@ COPY . .
 RUN npx prisma generate && npm run build
 
 ENV NODE_ENV=production
-CMD ["node", "dist/main"]
+CMD npx prisma migrate deploy && node dist/main

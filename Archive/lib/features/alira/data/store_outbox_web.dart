@@ -83,7 +83,7 @@ Future<void> writeStoreOutbox(List<Map<String, dynamic>> items) async {
   try {
     await _idbPut(encoded);
   } catch (error) {
-    if (storageError != null) throw error;
+    if (storageError != null) rethrow;
   }
 }
 

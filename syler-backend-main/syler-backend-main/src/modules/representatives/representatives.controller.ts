@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Delete, Get, Post, Patch, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { RepresentativesService } from './representatives.service';
 import { CreateRepresentativeDto } from './dto/create-representative.dto';
@@ -67,6 +67,13 @@ export class RepresentativesController {
   async update(@Param('id') id: string, @Body() dto: UpdateRepresentativeDto) {
     const data = await this.repsService.update(id, dto);
     return { success: true, data, message: 'تم تعديل بيانات المندوب بنجاح' };
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN', 'MANAGER')
+  @ApiOperation({ summary: 'إغلاق حساب المندوب وتحرير اسم الدخول' })
+  async remove(@Param('id') id: string) {
+    return this.repsService.remove(id);
   }
 
   @Patch(':id/toggle-status')

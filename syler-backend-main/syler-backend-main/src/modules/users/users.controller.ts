@@ -2,6 +2,7 @@ import {
     BadRequestException,
     Body,
     Controller,
+    Delete,
     Get,
     Param,
     Patch,
@@ -70,5 +71,30 @@ export class UsersController {
     @Permissions('USER_MANAGE')
     assign(@Param('id') id: string, @Body() dto: AssignStationDto) {
         return this.usersService.assignStation(id, dto);
+    }
+
+    @Delete(':id')
+    @Permissions('USER_MANAGE')
+    async remove(
+        @Param('id') id: string,
+        @Req() req: { user?: { id?: string } },
+    ) {
+        if (req.user?.id && req.user.id === id) {
+            throw new BadRequestException('لا يمكن حذف الحساب الذي دخلت به.');
+        }
+        try {
+            await this.usersService.removeUser(id);
+            return { success: true };
+        } catch (error) {
+            if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                (error.code === 'P2003' || error.code === 'P2014')
+            ) {
+                throw new BadRequestException(
+                    'لا يمكن حذف حاسبة لها فواتير أو عمليات. أوقف الدخول بدل الحذف.',
+                );
+            }
+            throw error;
+        }
     }
 }

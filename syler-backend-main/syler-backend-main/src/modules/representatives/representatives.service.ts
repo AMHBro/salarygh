@@ -325,6 +325,36 @@ export class RepresentativesService {
     return updated;
   }
 
+  async remove(id: string) {
+    const rep = await this.prisma.representatives.findUnique({
+      where: { id },
+      include: { users: { select: { id: true, username: true } } },
+    });
+    if (!rep) throw new NotFoundException('المندوب غير موجود');
+
+    const freedName = `deleted-${rep.user_id.slice(0, 8)}`;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.representatives.update({
+        where: { id },
+        data: { status: rep_status_enum.INACTIVE, updated_at: new Date() },
+      });
+      await tx.users.update({
+        where: { id: rep.user_id },
+        data: {
+          is_active: false,
+          username: freedName,
+          refresh_token: null,
+          updated_at: new Date(),
+        },
+      });
+    });
+
+    return {
+      success: true,
+      message: 'تم حذف حساب المندوب وإغلاق دخوله',
+    };
+  }
+
   // ─── 7. تفعيل أو إيقاف حساب المندوب ──────────────────────────────────────
   async toggleStatus(id: string) {
     const rep = await this.prisma.representatives.findUnique({ where: { id } });

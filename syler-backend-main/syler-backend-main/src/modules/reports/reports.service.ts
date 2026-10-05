@@ -753,6 +753,8 @@ export class ReportsService {
         v.voucher_number,
         v.voucher_type::text AS voucher_type,
         v.payment_method::text AS payment_method,
+        v.customer_id,
+        v.supplier_id,
         coalesce(c.name, sup.name, 'غير محدد') AS party_name,
         cb.name AS cashbox_name,
         coalesce(

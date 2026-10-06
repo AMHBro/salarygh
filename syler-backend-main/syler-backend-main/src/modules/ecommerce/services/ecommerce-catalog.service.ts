@@ -820,17 +820,8 @@ export class EcommerceCatalogService {
               AND EXISTS (
                 SELECT 1
                 FROM public.product_variants v
-                JOIN public.stock_levels s ON s.variant_id = v.id
                 WHERE v.product_id = p.id
                   AND v.is_active = true
-                GROUP BY v.id
-                HAVING SUM(s.quantity_on_hand - s.quantity_reserved)
-                    - COALESCE((
-                        SELECT SUM(h.quantity)
-                        FROM public.stock_holds h
-                        WHERE h.variant_id = v.id
-                          AND h.expires_at > NOW()
-                      ), 0) > 0
               )
             ORDER BY p.name_ar ASC
             LIMIT ${limit + 1}
@@ -845,20 +836,12 @@ export class EcommerceCatalogService {
             FROM public.products p
             JOIN public.categories c ON c.id = p.category_id
             WHERE p.is_active = true
+              AND c.is_active = true
               AND EXISTS (
                 SELECT 1
                 FROM public.product_variants v
-                JOIN public.stock_levels s ON s.variant_id = v.id
                 WHERE v.product_id = p.id
                   AND v.is_active = true
-                GROUP BY v.id
-                HAVING SUM(s.quantity_on_hand - s.quantity_reserved)
-                    - COALESCE((
-                        SELECT SUM(h.quantity)
-                        FROM public.stock_holds h
-                        WHERE h.variant_id = v.id
-                          AND h.expires_at > NOW()
-                      ), 0) > 0
               )
             ORDER BY c.name_ar ASC
         `)
@@ -925,10 +908,6 @@ export class EcommerceCatalogService {
                     if (item.price_type === price_type_enum.REP) prices.representative = amount;
                     if (item.price_type === price_type_enum.RETAIL) prices.retail = amount;
                 }
-            }
-
-            if (stock <= 0) {
-                continue;
             }
 
             const categoryId = product.categories?.id ?? 'none';

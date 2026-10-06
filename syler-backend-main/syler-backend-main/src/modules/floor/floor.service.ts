@@ -148,6 +148,7 @@ export class FloorService implements OnModuleInit {
   /**
    * حجز طلب المتجر أو المندوب لحظة الإرسال. ينتهي بعد 15 دقيقة
    * أو عند القبول والرفض والإلغاء.
+   * إذا لا توجد كمية حرة يُحفظ الطلب بلا حجز، والقبول في المكتب يتحقق من المخزن.
    */
   async reserveOrder(
     tx: SqlClient,
@@ -187,7 +188,6 @@ export class FloorService implements OnModuleInit {
                  s.warehouse_id
       `;
 
-      let placed = false;
       for (const candidate of candidates) {
         await tx.$queryRaw`
           SELECT id FROM stock_levels
@@ -233,15 +233,7 @@ export class FloorService implements OnModuleInit {
               warehouse_id = EXCLUDED.warehouse_id,
               expires_at = EXCLUDED.expires_at
         `;
-        placed = true;
         break;
-      }
-
-      if (!placed) {
-        throw new ConflictException({
-          code: 'INSUFFICIENT_STOCK',
-          message: 'الكمية محجوزة أو غير متوفرة على السيرفر',
-        });
       }
     }
   }

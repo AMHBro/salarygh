@@ -823,7 +823,11 @@ export class EcommerceCatalogService {
                 WHERE v.product_id = p.id
                   AND v.is_active = true
               )
-            ORDER BY p.name_ar ASC
+            ORDER BY CASE
+                       WHEN p.image_url IS NOT NULL AND length(p.image_url) > 20 THEN 0
+                       ELSE 1
+                     END,
+                     p.name_ar ASC
             LIMIT ${limit + 1}
             OFFSET ${offset}
         `);
@@ -882,6 +886,11 @@ export class EcommerceCatalogService {
         rows.sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0));
 
         const products = [];
+        const imageDonors = await this.imageDonors(
+            rows
+                .filter((product) => !(product.image_url ?? '').trim())
+                .map((product) => product.name_ar),
+        );
         const heldByVariant = await this.activeHoldQuantities(
             rows.flatMap((product) => product.product_variants.map((variant) => variant.id)),
         );
@@ -915,6 +924,8 @@ export class EcommerceCatalogService {
             const price = priceType === price_type_enum.REP
                 ? prices.representative || prices.retail
                 : prices.retail || prices.representative;
+            const ownImage = (product.image_url ?? '').trim();
+            const donor = ownImage ? undefined : imageDonors.get(product.name_ar);
             products.push({
                 id: product.id,
                 variant_id: variantId,
@@ -925,9 +936,9 @@ export class EcommerceCatalogService {
                 price,
                 prices,
                 image_url: this.storeImageRef(
-                    product.id,
-                    product.image_url,
-                    product.updated_at,
+                    donor?.id ?? product.id,
+                    ownImage || (donor ? 'stored' : ''),
+                    donor?.updatedAt ?? product.updated_at,
                 ),
                 category_id: categoryId,
                 category_name: categoryName,
@@ -944,6 +955,29 @@ export class EcommerceCatalogService {
             has_more: hasMore,
             audience: audience === 'agent' ? 'agent' : 'customer',
         };
+    }
+
+    private async imageDonors(names: string[]) {
+        const unique = [...new Set(names.map((name) => name.trim()).filter(Boolean))];
+        const donors = new Map<string, { id: string; updatedAt: Date | null }>();
+        if (unique.length === 0) {
+            return donors;
+        }
+        const found = await this.prisma.$queryRaw<
+            Array<{ id: string; name_ar: string; updated_at: Date | null }>
+        >(Prisma.sql`
+            SELECT DISTINCT ON (name_ar) id::text AS id, name_ar, updated_at
+            FROM public.products
+            WHERE is_active = true
+              AND name_ar IN (${Prisma.join(unique)})
+              AND image_url IS NOT NULL
+              AND length(image_url) > 20
+            ORDER BY name_ar, updated_at DESC
+        `);
+        for (const row of found) {
+            donors.set(row.name_ar, { id: row.id, updatedAt: row.updated_at });
+        }
+        return donors;
     }
 
     storeImageRef(

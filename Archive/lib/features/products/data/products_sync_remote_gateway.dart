@@ -1851,11 +1851,9 @@ class ProductsSyncRemoteGateway
               ),
             ),
             imageUrl:
-            Value(
-              _nullableString(
-                serverProduct[
-                'image_url'],
-              ),
+            _keptImage(
+              serverProduct[
+              'image_url'],
             ),
             costPrice:
             Value(
@@ -2780,6 +2778,14 @@ WHERE remote_product_id = ?
       return null;
     }
     return text;
+  }
+
+  Value<String?> _keptImage(dynamic image) {
+    final url = _httpImageUrl(image);
+    if (url == null) {
+      return const Value.absent();
+    }
+    return Value(url);
   }
 
   double _toDouble(

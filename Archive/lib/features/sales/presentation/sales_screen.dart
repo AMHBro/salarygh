@@ -12,6 +12,7 @@ import '../../customers/models/customer_model.dart';
 import '../../products/models/product_model.dart';
 import '../../products/models/product_variant_model.dart';
 import '../../representatives/models/representative_model.dart';
+import '../../users/data/station_grants.dart';
 import '../../warehouses/models/warehouse_model.dart';
 import '../models/cart_item_model.dart';
 import '../models/held_sale_model.dart';
@@ -543,6 +544,15 @@ class _SalesScreenState extends State<SalesScreen> {
 
   Future<void> _reloadCustomerSuggestions() async {
     final query = _customerNameController.text.trim();
+    if (_suggestionPage == 1 &&
+        query.isNotEmpty &&
+        query != 'زبون نقدي') {
+      try {
+        await AppServices.customersSyncRemoteGateway.importSearch(query);
+      } catch (error) {
+        debugPrint('[CUSTOMER SEARCH] $error');
+      }
+    }
     final page = await _customersRepository.pageCustomers(
       search: query == 'زبون نقدي' ? '' : query,
       limit: 20,

@@ -10,7 +10,7 @@ class LocalBackup {
 
   const LocalBackup({required this.database});
 
-  Future<int> exportFile() async {
+  Future<int?> exportFile() async {
     final tables = <String, List<Map<String, Object?>>>{};
     var count = 0;
 
@@ -35,7 +35,10 @@ class LocalBackup {
       'tables': tables,
     });
 
-    await saveBackupFile('sayler-backup-$stamp.json', payload);
+    final saved = await saveBackupFile('sayler-backup-$stamp.json', payload);
+    if (!saved) {
+      return null;
+    }
     return count;
   }
 

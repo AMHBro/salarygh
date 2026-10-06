@@ -54,6 +54,10 @@ class RepresentativesSyncRemoteGateway
         );
         return;
 
+      case 'DELETE':
+        await _pushDelete(operation);
+        return;
+
       default:
         throw StateError(
           'Unsupported representative sync operation: '
@@ -101,11 +105,13 @@ class RepresentativesSyncRemoteGateway
       operation.payloadJson,
     );
 
-    final password =
-    _requireString(
-      payload['password'],
-      field: 'password',
-    );
+    final password = payload['password']?.toString().trim() ?? '';
+    if (password.isEmpty) {
+      debugPrint(
+        '[REPRESENTATIVE SYNC] CREATE skipped: password was not stored with the record.',
+      );
+      return;
+    }
 
     final body =
     _createBody(
@@ -156,6 +162,33 @@ class RepresentativesSyncRemoteGateway
   // ===========================================================================
   // UPDATE
   // ===========================================================================
+
+  Future<void> _pushDelete(
+    SyncOutboxData operation,
+  ) async {
+    final representative = await _getLocalRepresentative(operation.entityId);
+    if (representative == null) {
+      return;
+    }
+    final serverId = _clean(representative.serverId);
+    if (serverId == null) {
+      return;
+    }
+    try {
+      await apiClient.delete('/representatives/$serverId');
+    } on DioException catch (error) {
+      if (error.response?.statusCode != 404) {
+        rethrow;
+      }
+      final current = await apiClient.get('/representatives/$serverId');
+      final raw = current.data;
+      final row = raw is Map && raw['data'] is Map ? raw['data'] : raw;
+      final status = row is Map ? '${row['status'] ?? ''}' : '';
+      if (status == 'ACTIVE') {
+        await apiClient.patch('/representatives/$serverId/toggle-status');
+      }
+    }
+  }
 
   Future<void> _pushUpdate(
       SyncOutboxData operation,

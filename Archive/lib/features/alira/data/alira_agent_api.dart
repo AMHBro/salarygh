@@ -154,12 +154,19 @@ class AliraAgentApi {
       if (data is Map && data['message'] != null) {
         final message = data['message'];
         if (message is List && message.isNotEmpty) return '${message.first}';
+        if (message is Map) {
+          final inner = '${message['message'] ?? ''}'.trim();
+          if (inner.isNotEmpty) return inner;
+        }
         final text = '$message'.trim();
-        if (text.isNotEmpty) return text;
+        if (text.isNotEmpty && text != 'Unauthorized') return text;
       }
       if (data is String && data.trim().isNotEmpty) return data.trim();
       if (error.response == null) {
         return 'السيرفر غير متصل. حاول مرة أخرى.';
+      }
+      if (error.response?.statusCode == 401) {
+        return 'انتهت الجلسة. اخرج ثم سجل الدخول مرة أخرى.';
       }
     }
     if (error is StateError) return error.message;

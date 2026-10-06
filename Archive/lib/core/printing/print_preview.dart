@@ -8,6 +8,7 @@ import '../../features/settings/data/company_settings_repository.dart';
 import '../../features/settings/models/document_layout.dart';
 import '../../features/settings/data/print_settings_store.dart';
 import '../../features/settings/models/print_settings.dart';
+import '../../features/settings/models/public_links.dart';
 import '../di/app_services.dart';
 import '../theme/app_theme.dart';
 import 'print_channel.dart';
@@ -228,6 +229,7 @@ Future<void> showPrintPreview(
   var header = const DocumentHeader();
   var sections = const <String>[];
   var printSettings = const PrintSettings();
+  var storeUrl = PublicLinks.shop;
   try {
     printSettings = await PrintSettingsStore(AppServices.database).read();
   } catch (_) {
@@ -239,6 +241,7 @@ Future<void> showPrintPreview(
     ).getCompany();
     final settings = company['settings'];
     header = DocumentLayouts.headerFrom(settings);
+    storeUrl = PublicLinks.fromSettings(settings).shopUrl;
     final receipt = document.kind.contains('وصل') || document.kind.contains('سند');
     final blocks = receipt
         ? DocumentLayouts.receiptFrom(settings)
@@ -317,7 +320,7 @@ Future<void> showPrintPreview(
                       const SizedBox(width: 8),
                       FilledButton.icon(
                         onPressed: () => openPrintWindow(
-                          _html(document, header, sections, printSettings),
+                          _html(document, header, sections, printSettings, storeUrl),
                         ),
                         icon: const Icon(Icons.print_outlined, size: 16),
                         label: const Text('طباعة'),
@@ -334,6 +337,7 @@ Future<void> showPrintPreview(
                         header: header,
                         sections: sections,
                         settings: printSettings,
+                        storeUrl: storeUrl,
                       ),
                     ),
                   ),
@@ -351,6 +355,7 @@ class PrintSheetView extends StatelessWidget {
   final PrintDocument document;
   final PrintSettings settings;
   final DocumentHeader header;
+  final String storeUrl;
   final void Function(String id, double dx, double dy)? onFieldMoved;
 
   const PrintSheetView({
@@ -358,6 +363,7 @@ class PrintSheetView extends StatelessWidget {
     required this.document,
     required this.settings,
     this.header = const DocumentHeader(),
+    this.storeUrl = PublicLinks.shop,
     this.onFieldMoved,
   });
 
@@ -388,6 +394,7 @@ class PrintSheetView extends StatelessWidget {
       header: chrome,
       sections: [for (final block in blocks) block.id],
       settings: settings,
+      storeUrl: storeUrl,
       onFieldMoved: onFieldMoved,
     );
   }
@@ -398,6 +405,7 @@ class _Paper extends StatelessWidget {
   final DocumentHeader header;
   final List<String> sections;
   final PrintSettings settings;
+  final String storeUrl;
   final void Function(String id, double dx, double dy)? onFieldMoved;
 
   const _Paper({
@@ -405,6 +413,7 @@ class _Paper extends StatelessWidget {
     required this.header,
     required this.sections,
     required this.settings,
+    this.storeUrl = PublicLinks.shop,
     this.onFieldMoved,
   });
 
@@ -814,7 +823,7 @@ class _Paper extends StatelessWidget {
       padding: const EdgeInsets.only(top: 12),
       child: Column(
         children: [
-          Center(child: _qrImage(kStorefrontUrl, 96)),
+          Center(child: _qrImage(storeUrl, 96)),
           const SizedBox(height: 4),
           const Text('المتجر', textAlign: TextAlign.center),
         ],
@@ -1386,6 +1395,7 @@ String _html(
   DocumentHeader header,
   List<String> sections,
   PrintSettings settings,
+  String storeUrl,
 ) {
   bool on(String id) => sections.isEmpty || sections.contains(id);
   final sale = _isSaleInvoice(document);
@@ -1433,7 +1443,7 @@ String _html(
       ? '<div>الهاتف: ${_escape(document.phone.trim())}</div>'
       : '';
   final qr = settings.showQr
-      ? '<div class="words">${_qrSvg(kStorefrontUrl, 96)}<div>المتجر</div></div>'
+      ? '<div class="words">${_qrSvg(storeUrl, 96)}<div>المتجر</div></div>'
       : '';
   final headerFields = _customFieldsHtml(settings, 'header');
   final footerFields = _customFieldsHtml(settings, 'footer');
@@ -1566,8 +1576,6 @@ bool _repeatsFinancialFooter(String line) {
   ];
   return keys.any(line.contains);
 }
-
-const kStorefrontUrl = 'https://www.hajecamell.store/shop';
 
 bool _keepSheetColumn(String name, PrintSettings settings, bool sale) {
   if (!settings.showItemCode &&

@@ -619,6 +619,10 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
                       representative,
                     );
                     break;
+
+                  case 'delete':
+                    _deleteRepresentative(representative);
+                    break;
                 }
               },
               itemBuilder: (context) {
@@ -1402,6 +1406,38 @@ class _RepresentativesScreenState extends State<RepresentativesScreen> {
       _showMessage(
         _errorMessage(error),
       );
+    }
+  }
+
+  Future<void> _deleteRepresentative(
+    RepresentativeModel representative,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف حساب المندوب'),
+        content: Text(
+          'ينحذف دخول ${representative.name} وما يقدر يفتح حساب المندوب بعد المزامنة.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _repository.deleteRepresentative(representative);
+      await _loadRepresentatives();
+      _showMessage('حُذف الحساب. اضغط مزامنة الآن حتى ينقفل دخوله من الهاتف.');
+    } catch (error) {
+      _showMessage(_errorMessage(error));
     }
   }
 

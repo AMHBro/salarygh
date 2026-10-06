@@ -218,7 +218,6 @@ class _AliraShopAppState extends State<AliraShopApp> {
   @override
   Widget build(BuildContext context) {
     return AliraPhone(
-      maxWidth: 430,
       fontFamily: 'Tahoma',
       child: Column(
         children: [

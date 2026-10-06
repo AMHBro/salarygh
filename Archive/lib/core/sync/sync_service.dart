@@ -13,6 +13,7 @@ import '../../features/ecommerce/data/cloud_store_orders.dart';
 import '../network/api_client.dart';
 import 'connectivity_service.dart';
 import 'store_catalog_publisher.dart';
+import 'product_photo_sink.dart';
 import 'supplier_sheet_sink.dart';
 import 'sync_failure.dart';
 import 'sync_queue_repository.dart';
@@ -46,6 +47,9 @@ class SyncService {
 
   bool get isSyncing => _isSyncing;
   bool get isStarted => _started;
+
+  /// يُستدعى بعد نجاح سحب السيرفر حتى تُربط الحاسبة بمخزنها بعد وصول المخازن.
+  Future<void> Function()? afterServerPull;
 
   // ===========================================================================
   // START
@@ -238,11 +242,18 @@ class SyncService {
           if (serverId.isEmpty || !_usableProductImage(image)) {
             continue;
           }
+          final name = '${raw['name_ar'] ?? ''}'.trim();
+          final sku = '${raw['sku'] ?? ''}'.trim();
           await _saveProductImage(
             serverId: serverId,
             image: image,
             barcode: '${raw['barcode'] ?? ''}'.trim(),
-            sku: '${raw['sku'] ?? ''}'.trim(),
+            sku: sku,
+          );
+          await saveDailyProductPhoto(
+            name: name.isNotEmpty ? name : (sku.isNotEmpty ? sku : serverId),
+            imageUrl: image,
+            savedAt: DateTime.tryParse('${raw['updated_at'] ?? ''}') ?? DateTime.now(),
           );
         }
         page += 1;
@@ -509,8 +520,14 @@ WHERE remote_product_id = ?
                   error.contains('status code of 404'));
           final waitingForParty = error.contains('لم تتم مزامنته') ||
               error.contains('لم يصل إلى السيرفر');
+          final clearedLocally = error.contains('password مفقود') ||
+              (row.entityType == 'direct_sale' &&
+                  error.contains('status code of 404')) ||
+              (row.entityType == 'supplier_payment' &&
+                  error.contains('status code of 400'));
           if (!catalogRejected &&
               !waitingForParty &&
+              !clearedLocally &&
               !isTransientSyncFailure(StateError(error))) {
             continue;
           }
@@ -943,6 +960,17 @@ WHERE remote_product_id = ?
       debugPrint(
         '[SYNC] Server pull phase completed.',
       );
+
+      final hook = afterServerPull;
+      if (hook != null) {
+        try {
+          await hook();
+        } catch (error) {
+          debugPrint(
+            '[SYNC] Station warehouse bind failed: $error',
+          );
+        }
+      }
     } catch (error, stackTrace) {
       debugPrint(
         '[SYNC] Pull phase failed.',

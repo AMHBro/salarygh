@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/auth/auth_user.dart';
 import '../../../core/di/app_services.dart';
 import '../../../core/paging/list_page.dart';
 import '../../../core/printing/print_preview.dart';
@@ -10,6 +11,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../representatives/models/representative_model.dart';
 import '../../warehouses/models/warehouse_model.dart';
 import '../../settings/data/company_settings_repository.dart';
+import '../../users/data/station_grants.dart';
 import '../data/local_statements_repository.dart';
 import '../data/reports_repository.dart';
 import '../models/report_catalog.dart';
@@ -35,7 +37,9 @@ class _ReportsScreenState extends State<ReportsScreen>
   late final TabController _tabs;
 
   List<WarehouseModel> _warehouses = [];
+  Map<String, String> _stationNames = const {};
   String? _stationWarehouseId;
+  bool _canAssignWarehouse = false;
   String? _reportWarehouseId;
 
   List<RepresentativeModel> _representatives = [];
@@ -105,8 +109,16 @@ class _ReportsScreenState extends State<ReportsScreen>
 
   Future<void> _loadLookups() async {
     try {
+      await StationGrants.applyForCurrentUser();
       final warehouses = await AppServices.warehousesRepository.getWarehouses();
       final stationWarehouseId = await AuthStorage().readStationWarehouseId();
+      final session = await AppServices.authStorage.readSession();
+      final canAssign = canApproveWarehouseDelete(
+        resolveSessionRole(
+          storedRole: session?.user.role,
+          accessToken: session?.accessToken,
+        ),
+      );
       final groups = await _localStatements.groupNames();
       List<RepresentativeModel> representatives = [];
       try {
@@ -114,23 +126,54 @@ class _ReportsScreenState extends State<ReportsScreen>
             await AppServices.representativesRepository.getRepresentatives();
       } catch (_) {}
 
+      final stationNames = <String, String>{};
+      if (canAssign) {
+        try {
+          final grants = await StationGrants.read();
+          final usersResponse = await AppServices.apiClient.get('/users');
+          final rawUsers = usersResponse.data;
+          final rows = rawUsers is List
+              ? rawUsers
+              : (rawUsers is Map && rawUsers['data'] is List
+                  ? rawUsers['data'] as List
+                  : const []);
+          final names = <String, String>{};
+          for (final row in rows) {
+            if (row is Map) {
+              final name = '${row['full_name'] ?? row['username'] ?? ''}'.trim();
+              if (name.isNotEmpty) names['${row['id']}'] = name;
+            }
+          }
+          for (final entry in grants.entries) {
+            final station = names[entry.key] ?? '';
+            if (station.isEmpty) continue;
+            for (final warehouse in warehouses) {
+              if ((warehouse.serverId ?? '').trim() == entry.value) {
+                stationNames[warehouse.id] = station;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       if (!mounted) {
         return;
       }
 
+      final savedStation = stationWarehouseId?.trim() ?? '';
       setState(() {
         _warehouses = warehouses
             .where((warehouse) => warehouse.isActive && warehouse.deletedAt == null)
             .toList();
-        _stationWarehouseId = _warehouses.any(
-          (warehouse) => warehouse.id == stationWarehouseId,
-        )
-            ? stationWarehouseId
-            : null;
+        _canAssignWarehouse = canAssign && savedStation.isEmpty;
+        _stationWarehouseId = savedStation.isNotEmpty
+            ? savedStation
+            : (canAssign ? null : StationGrants.unassigned);
         _customerGroups = groups;
         _representatives = representatives
             .where((item) => item.deletedAt == null)
             .toList();
+        _stationNames = stationNames;
       });
     } catch (_) {
       // القوائم المحلية اختيارية للتقارير التي لا تحتاج زبون أو مادة.
@@ -260,7 +303,7 @@ class _ReportsScreenState extends State<ReportsScreen>
       }
 
       setState(() {
-        _rows = _withDollarColumns(_withOperationTypes(rows));
+        _rows = _withDollarColumns(_withOperationTypes(_labelStationRows(rows)));
         _loading = false;
       });
     } catch (error) {
@@ -426,7 +469,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                     ),
                   ),
                 ),
-                SizedBox(width: 280, child: _stationPicker()),
+                if (!_canAssignWarehouse) _stationLock(),
               ],
             ),
             const SizedBox(height: 6),
@@ -575,6 +618,31 @@ class _ReportsScreenState extends State<ReportsScreen>
     );
   }
 
+  String _warehouseLabel(WarehouseModel warehouse) {
+    final station = _stationNames[warehouse.id]?.trim() ?? '';
+    if (station.isEmpty) return warehouse.name;
+    return '${warehouse.name} — $station';
+  }
+
+  List<Map<String, dynamic>> _labelStationRows(List<Map<String, dynamic>> rows) {
+    if (_stationNames.isEmpty) return rows;
+    return [
+      for (final row in rows)
+        () {
+          final name = '${row['warehouse_name'] ?? ''}'.trim();
+          for (final warehouse in _warehouses) {
+            if (warehouse.name == name) {
+              final station = _stationNames[warehouse.id];
+              if (station != null && station.isNotEmpty) {
+                return {...row, 'warehouse_name': '${warehouse.name} — $station'};
+              }
+            }
+          }
+          return row;
+        }(),
+    ];
+  }
+
   WarehouseModel? get _selectedWarehouse {
     final id = _activeWarehouseId;
     if (id == null) {
@@ -588,39 +656,19 @@ class _ReportsScreenState extends State<ReportsScreen>
     return null;
   }
 
-  Widget _stationPicker() {
-    return _TypedPicker(
-      label: 'هذه الحاسبة',
-      width: 280,
-      valueId: _stationWarehouseId,
-      emptyLabel: 'رئيسية — كل المخازن',
-      live: false,
-      choices: [
-        for (final warehouse in _warehouses)
-          _Choice(warehouse.id, warehouse.name),
-      ],
-      onChanged: (value) async {
-        await AuthStorage().saveStationWarehouseId(value);
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _stationWarehouseId = value;
-          _rows = [];
-          if (value != null && _report.localKind == 'warehouseTotals') {
-            _report = reportCatalog.firstWhere(
-              (item) => item.localKind == 'warehouseMovement',
-            );
-          }
-        });
-      },
+  Widget _stationLock() {
+    final name = _selectedWarehouse?.name.trim() ?? '';
+    return Text(
+      name.isEmpty ? 'بانتظار تعيين المخزن من المسؤول' : 'مخزن هذه الحاسبة: $name',
+      style: const TextStyle(fontWeight: FontWeight.w700),
     );
   }
 
   Widget _warehouseFilter() {
     if (_stationWarehouseId != null) {
+      final name = _selectedWarehouse?.name.trim() ?? '';
       return Chip(
-        label: Text('مخزن هذه الحاسبة: ${_selectedWarehouse?.name ?? ''}'),
+        label: Text(name.isEmpty ? 'لم يُعيَّن مخزن' : 'مخزن هذه الحاسبة: $name'),
       );
     }
 
@@ -629,7 +677,8 @@ class _ReportsScreenState extends State<ReportsScreen>
       valueId: _reportWarehouseId,
       emptyLabel: 'مجموع كل المخازن',
       choices: [
-        for (final warehouse in _warehouses) _Choice(warehouse.id, warehouse.name),
+        for (final warehouse in _warehouses)
+          _Choice(warehouse.id, _warehouseLabel(warehouse)),
       ],
       onChanged: (value) {
         setState(() {

@@ -124,6 +124,14 @@ class ProductsSyncRemoteGateway
       );
     }
 
+    if ((localProduct.deletedAt != null || !localProduct.isActive) &&
+        (localProduct.serverId ?? '').trim().isEmpty) {
+      debugPrint(
+        '[PRODUCT SYNC] CREATE skipped: inactive product has no server id.',
+      );
+      return;
+    }
+
     final serverId =
         localProduct.serverId;
 
@@ -1889,9 +1897,12 @@ class ProductsSyncRemoteGateway
               updatedAt,
             ),
             deletedAt:
-            const Value(
-              null,
-            ),
+            _toBool(
+              serverProduct['is_active'],
+              fallback: true,
+            )
+                ? const Value(null)
+                : Value(DateTime.now()),
           ),
         );
 

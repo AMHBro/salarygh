@@ -622,9 +622,7 @@ class PurchaseExcelGridState extends State<PurchaseExcelGrid> {
             vertical: 10,
           ),
           color: selected
-              ? const Color(
-            0xFFF5F5F7,
-          )
+              ? const Color(0xFFD8F3E4)
               : Colors.white,
           child: Row(
             children: [

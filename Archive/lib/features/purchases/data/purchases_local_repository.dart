@@ -437,7 +437,7 @@ class PurchasesLocalRepository {
               product.name,
               barcodeSnapshot:
               Value(
-                barcode!,
+                (barcode ?? '').trim(),
               ),
               quantity:
               resolvedItem.quantity,

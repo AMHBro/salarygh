@@ -75,6 +75,12 @@ class _SuppliersScreenState extends State<SuppliersScreen> {
     }
 
     try {
+      final query = _searchController.text.trim();
+      if (query.isNotEmpty) {
+        try {
+          await AppServices.suppliersSyncRemoteGateway.importSearch(query);
+        } catch (_) {}
+      }
       final result = await _repository.pageSuppliers(
         offset: (nextPage - 1) * kListPageSize,
         search: _searchController.text,

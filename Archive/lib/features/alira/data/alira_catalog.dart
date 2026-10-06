@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:sales_system/core/network/server_endpoint.dart';
 
+import 'alira_local_images.dart';
 import 'alira_mock.dart';
 
 class AliraCatalog {
@@ -18,6 +19,7 @@ class AliraCatalog {
   static final Map<String, AliraProduct> _byId = {};
   static int _generation = 0;
   static bool _agent = false;
+  static Map<String, String> _localImages = const {};
   static String _query = '';
   static String? _familyId;
   static Timer? _searchTimer;
@@ -121,6 +123,11 @@ class AliraCatalog {
     loading = true;
     try {
       await _useActiveServer();
+      try {
+        _localImages = await localProductImages();
+      } catch (_) {
+        _localImages = const {};
+      }
       final nextPage = append ? page + 1 : 1;
       final batch = await _readPage(nextPage, agent: _agent);
       if (generation != _generation) return;
@@ -143,10 +150,11 @@ class AliraCatalog {
       if (!append && batch.products.isEmpty) {
         products = const [];
         _serverFamilies = batch.families;
-        fromServer = false;
+        fromServer = true;
         hasNext = false;
         page = 1;
-        throw const ServerConnectionException();
+        connectionError = null;
+        return;
       }
       fromServer = true;
       hasNext = batch.hasMore;
@@ -203,8 +211,21 @@ class AliraCatalog {
     );
   }
 
+  static String? _resolvedImage(Map item) {
+    final raw = item['image_url'];
+    final server = raw == null ? '' : '$raw'.trim();
+    if (server.isNotEmpty && server != 'null') return server;
+    final id = '${item['id']}'.trim();
+    final sku = '${item['sku'] ?? ''}'.trim();
+    if (id.isNotEmpty && _localImages.containsKey(id)) return _localImages[id];
+    if (sku.isNotEmpty && _localImages.containsKey('sku:$sku')) {
+      return _localImages['sku:$sku'];
+    }
+    return null;
+  }
+
   static AliraProduct _product(Map item) {
-    final image = item['image_url'];
+    final image = _resolvedImage(item);
     final rawPrices = item['prices'];
     final prices = <String, int>{};
     if (rawPrices is Map) {
@@ -219,7 +240,7 @@ class AliraCatalog {
       name: '${item['name'] ?? ''}',
       unit: '${item['unit'] ?? ''}',
       price: item['price'] is num ? (item['price'] as num).round() : int.tryParse('${item['price']}') ?? 0,
-      imageUrl: image == null || '$image'.isEmpty ? null : '$image',
+      imageUrl: image,
       color: '#6b7788',
       categoryId: '${item['category_id'] ?? 'none'}',
       categoryName: '${item['category_name'] ?? 'بدون عائلة'}',

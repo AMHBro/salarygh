@@ -432,18 +432,22 @@ INSERT OR REPLACE INTO store_catalog_categories (
     );
     final items = _list(response.data);
     for (final item in items) {
-      if (item['name']?.toString() == 'مخزن المتجر') {
+      final name = item['name']?.toString() ?? '';
+      if (name == 'مخزن المكتب' || name == 'المكتب') {
         return item['id']?.toString();
       }
     }
-    if (items.isNotEmpty) {
-      return items.first['id']?.toString();
+    for (final item in items) {
+      final name = item['name']?.toString() ?? '';
+      if (name != 'بوب الشام' && name != 'مخزن بوب الشام') {
+        return item['id']?.toString();
+      }
     }
     final created = await PublicServerSession.send(
       method: 'POST',
       path: '/warehouses',
       data: {
-        'name': 'مخزن المتجر',
+        'name': 'مخزن المكتب',
         'branch_id': branchId,
         'type': 'MAIN',
       },

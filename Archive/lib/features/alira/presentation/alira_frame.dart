@@ -17,49 +17,30 @@ class AliraColors {
 }
 
 class AliraPhone extends StatelessWidget {
-  final double maxWidth;
   final String fontFamily;
   final Widget child;
 
   const AliraPhone({
     super.key,
     required this.child,
-    this.maxWidth = 390,
     this.fontFamily = 'IBM Plex Sans Arabic',
   });
 
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: AliraColors.canvas,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: maxWidth,
-            maxHeight: 844,
-          ),
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 16),
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: AliraColors.background,
-              borderRadius: BorderRadius.circular(36),
-              border: Border.all(color: AliraColors.line, width: 1.2),
+      color: AliraColors.background,
+      child: Theme(
+        data: _framedTheme(context),
+        child: Material(
+          color: AliraColors.background,
+          child: DefaultTextStyle(
+            style: TextStyle(
+              fontFamily: fontFamily,
+              color: AliraColors.text,
+              fontSize: 14,
             ),
-            child: Theme(
-              data: _framedTheme(context),
-              child: Material(
-                color: AliraColors.background,
-                child: DefaultTextStyle(
-                  style: TextStyle(
-                    fontFamily: fontFamily,
-                    color: AliraColors.text,
-                    fontSize: 14,
-                  ),
-                  child: child,
-                ),
-              ),
-            ),
+            child: SizedBox.expand(child: child),
           ),
         ),
       ),
@@ -133,21 +114,11 @@ class AliraStatusBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: AliraColors.teal,
-      padding: const EdgeInsets.fromLTRB(8, 10, 14, 14),
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              children: [
-                Text('9:41', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Colors.white)),
-                Spacer(),
-                Text('LTE · 57%', style: TextStyle(fontSize: 12, color: Color(0xCCFFFFFF))),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-          Row(
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 14, 14),
+          child: Row(
             children: [
               if (onBack != null)
                 IconButton(
@@ -182,7 +153,7 @@ class AliraStatusBar extends StatelessWidget {
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }

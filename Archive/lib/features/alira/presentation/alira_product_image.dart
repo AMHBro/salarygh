@@ -18,6 +18,8 @@ Widget aliraProductImage(
       return Image.memory(
         bytes,
         fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
         gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) => fallback,
       );
@@ -28,6 +30,8 @@ Widget aliraProductImage(
   return Image.network(
     value,
     fit: BoxFit.cover,
+    width: double.infinity,
+    height: double.infinity,
     errorBuilder: (context, error, stackTrace) => fallback,
   );
 }

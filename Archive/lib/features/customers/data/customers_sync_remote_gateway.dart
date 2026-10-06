@@ -260,49 +260,46 @@ class CustomersSyncRemoteGateway
     String? cursor,
   }) async {
     try {
-      final response =
-      await apiClient.get(
-        '/customers',
-      );
-
-      final raw =
-          response.data;
-
-      if (raw is! Map) {
-        throw StateError(
-          'استجابة الزبائن غير صالحة.',
+      var page = 1;
+      var pulled = 0;
+      var seen = 0;
+      while (page <= 40) {
+        final response = await apiClient.get(
+          '/customers',
+          queryParameters: {
+            'page': '$page',
+            'limit': '100',
+          },
         );
-      }
-
-      final root =
-      Map<String, dynamic>.from(
-        raw,
-      );
-
-      if (root['success'] == false) {
-        throw StateError(
-          _messageFromMap(
-            root,
-          ) ??
-              'فشل تحميل الزبائن.',
-        );
-      }
-
-      final rawCustomers =
-      _extractCustomerList(
-        root['data'],
-      );
-
-      for (final item
-      in rawCustomers) {
-        await _upsertRemoteCustomer(
-          item,
-        );
+        final batch = _customersFromResponse(response.data);
+        if (batch.isEmpty) {
+          break;
+        }
+        seen += batch.length;
+        for (final item in batch) {
+          try {
+            final inserted = await _importIfMissing(item);
+            if (inserted) {
+              pulled++;
+            }
+          } catch (error) {
+            debugPrint('[CUSTOMER SYNC] Skip row: $error');
+          }
+        }
+        final root = response.data;
+        final total = root is Map
+            ? int.tryParse('${(root['meta'] is Map ? root['meta']['total'] : '') ?? ''}') ??
+                0
+            : 0;
+        if (batch.length < 100 || (total > 0 && seen >= total)) {
+          break;
+        }
+        page++;
       }
 
       debugPrint(
         '[CUSTOMER SYNC] Pulled '
-            '${rawCustomers.length} customer(s).',
+            '$pulled customer(s).',
       );
 
       return const SyncPullResult(
@@ -347,8 +344,22 @@ class CustomersSyncRemoteGateway
       return;
     }
 
-    // لا نسوي matching بالاسم أو الهاتف.
-    // serverId هو الهوية الوحيدة الموثوقة.
+    final claimed = await _unsyncedCustomerByName(
+      name: _stringOrEmpty(serverData['name']),
+      phone: _stringOrEmpty(serverData['phone']),
+    );
+    if (claimed != null) {
+      await _applyRemoteSnapshot(
+        localId: claimed.id,
+        serverData: serverData,
+        requiredServerId: serverId,
+      );
+      debugPrint(
+        '[CUSTOMER SYNC] Linked local customer ${claimed.id} to $serverId',
+      );
+      return;
+    }
+
     final now =
     DateTime.now();
 
@@ -799,6 +810,113 @@ class CustomersSyncRemoteGateway
     return Map<String, dynamic>.from(
       data,
     );
+  }
+
+  /// يجلب زبائن السيرفر المطابقين للبحث، بمن فيهم زبائن الحاسبة الملحقة.
+  Future<void> importSearch(String query) async {
+    final text = query.trim();
+    if (text.length < 2) {
+      return;
+    }
+    final response = await apiClient.get(
+      '/customers',
+      queryParameters: {
+        'search': text,
+        'page': '1',
+        'limit': '100',
+      },
+    );
+    var fetched = 0;
+    for (final item in _customersFromResponse(response.data)) {
+      if (fetched >= 8) {
+        break;
+      }
+      final inserted = await _importIfMissing(item);
+      if (inserted) {
+        fetched++;
+      }
+    }
+  }
+
+  Future<Customer?> _unsyncedCustomerByName({
+    required String name,
+    required String phone,
+  }) async {
+    final wanted = name.trim();
+    if (wanted.isEmpty) {
+      return null;
+    }
+    final wantedPhone = phone.trim();
+    final rows = await (database.select(database.customers)
+          ..where(
+            (table) => table.deletedAt.isNull() & table.serverId.isNull(),
+          ))
+        .get();
+    final matches = rows.where((row) {
+      if (row.name.trim() != wanted) {
+        return false;
+      }
+      final localPhone = row.phone.trim();
+      if (wantedPhone.isEmpty || localPhone.isEmpty) {
+        return true;
+      }
+      return localPhone == wantedPhone;
+    }).toList();
+    if (matches.length != 1) {
+      return null;
+    }
+    return matches.first;
+  }
+
+  Future<bool> _importIfMissing(Map<String, dynamic> listed) async {
+    final serverId = _clean(listed['id']?.toString());
+    if (serverId == null) {
+      return false;
+    }
+    final existing = await _getLocalCustomerByServerId(serverId);
+    final remoteName = _stringOrEmpty(listed['name']).trim();
+    if (existing != null && existing.name.trim() == remoteName) {
+      return false;
+    }
+    final full = await _fetchFullCustomer(serverId);
+    if (full == null) {
+      return false;
+    }
+    await _upsertRemoteCustomer(full);
+    return existing == null;
+  }
+
+  Future<Map<String, dynamic>?> _fetchFullCustomer(String serverId) async {
+    final response = await apiClient.get('/customers/$serverId');
+    final raw = response.data;
+    if (raw is! Map) {
+      return null;
+    }
+    final root = Map<String, dynamic>.from(raw);
+    final data = root['data'] is Map
+        ? Map<String, dynamic>.from(root['data'] as Map)
+        : root;
+    final customer = data['customer'];
+    if (customer is Map) {
+      return Map<String, dynamic>.from(customer);
+    }
+    if (data['id'] != null) {
+      return data;
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _customersFromResponse(dynamic raw) {
+    if (raw is! Map) {
+      throw StateError('استجابة الزبائن غير صالحة.');
+    }
+    final root = Map<String, dynamic>.from(raw);
+    if (root['success'] == false) {
+      throw StateError(
+        _messageFromMap(root) ?? 'فشل تحميل الزبائن.',
+      );
+    }
+    return _extractCustomerList(root['data']);
   }
 
   List<Map<String, dynamic>>

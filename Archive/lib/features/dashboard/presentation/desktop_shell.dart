@@ -20,6 +20,7 @@ import '../../reports/presentation/reports_screen.dart';
 import '../../representatives/presentation/representatives_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../users/presentation/office_activity_screen.dart';
+import '../../users/data/station_grants.dart';
 import '../../users/presentation/stations_screen.dart';
 import '../../sales/presentation/sale_conflicts_screen.dart';
 import '../../sales/presentation/sales_screen.dart';
@@ -45,6 +46,7 @@ class _DesktopShellState
     extends State<DesktopShell> {
   int selectedIndex = 0;
   String _role = '';
+  bool _attachedStation = false;
   int _pendingStoreOrders = 0;
   int _openSaleConflicts = 0;
   Timer? _storeOrderBadgeTimer;
@@ -176,6 +178,8 @@ class _DesktopShellState
         DashboardRepository(
           database: AppServices.database,
         );
+    AppServices.syncService.afterServerPull =
+        StationGrants.applyForCurrentUser;
     ensureCartonSample();
     _loadRole();
     _refreshPendingStoreOrders();
@@ -230,15 +234,22 @@ class _DesktopShellState
 
   Future<void> _loadRole() async {
     final session = await AppServices.authRepository.currentSession();
+    try {
+      await StationGrants.applyForCurrentUser();
+    } catch (_) {}
+    final attached = await StationGrants.isAttachedStation();
     if (!mounted) {
       return;
     }
     setState(() {
       _role = session?.user.role ?? '';
+      _attachedStation = attached;
     });
   }
 
   bool get _canOpenFinance => canOpenFinanceReports(_role);
+
+  bool get _primaryAdmin => _canOpenFinance && !_attachedStation;
 
   // ===========================================================================
   // NAVIGATION
@@ -276,6 +287,12 @@ class _DesktopShellState
         return const SalesScreen();
 
       case 2:
+        if (_attachedStation) {
+          return const _RestrictedScreen(
+            title: 'طلبات المتجر والمندوب',
+            detail: 'الموافقة على قوائم المتجر والمندوب للحاسبة الأساسية فقط.',
+          );
+        }
         return const EcommerceOrdersScreen();
 
       case 3:
@@ -328,9 +345,21 @@ class _DesktopShellState
         return const CapitalScreen();
 
       case 16:
+        if (!_primaryAdmin) {
+          return const _RestrictedScreen(
+            title: 'خانة المسؤول',
+            detail: 'خانة المسؤول تعمل على الحاسبة الأساسية فقط.',
+          );
+        }
         return const OfficeActivityScreen();
 
       case 17:
+        if (!_primaryAdmin) {
+          return const _RestrictedScreen(
+            title: 'الحاسبات والصلاحيات',
+            detail: 'إدارة الحاسبات للحاسبة الأساسية فقط.',
+          );
+        }
         return const StationsScreen();
 
       case 18:
@@ -511,8 +540,8 @@ class _DesktopShellState
                 const SizedBox(height: 6),
 
                 _buildMenuItem(0),
-                _buildMenuItem(16),
-                _buildMenuItem(17),
+                if (_primaryAdmin) _buildMenuItem(16),
+                if (_primaryAdmin) _buildMenuItem(17),
 
                 const SizedBox(height: 16),
 
@@ -523,7 +552,7 @@ class _DesktopShellState
                 const SizedBox(height: 6),
 
                 _buildMenuItem(1),
-                _buildMenuItem(2),
+                if (!_attachedStation) _buildMenuItem(2),
                 _buildMenuItem(3),
                 _buildMenuItem(4),
                 _buildMenuItem(5),
@@ -938,16 +967,18 @@ class _MenuItem {
 
 class _RestrictedScreen extends StatelessWidget {
   final String title;
+  final String? detail;
 
   const _RestrictedScreen({
     required this.title,
+    this.detail,
   });
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Text(
-        '$title متاح للمدير والمسؤول فقط.',
+        detail ?? '$title متاح للمدير والمسؤول فقط.',
         style: const TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,

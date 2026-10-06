@@ -198,6 +198,8 @@ export class ProductsService {
                     image_url: true,
                     barcode: true,
                     sku: true,
+                    name_ar: true,
+                    updated_at: true,
                 },
                 orderBy: { updated_at: 'desc' },
                 skip,

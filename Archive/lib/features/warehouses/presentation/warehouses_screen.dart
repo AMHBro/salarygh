@@ -6,6 +6,7 @@ import '../../../core/paging/list_page.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../inventory/models/stock_movement_model.dart';
 import '../../products/models/product_model.dart';
+import '../../users/data/station_grants.dart';
 import '../data/warehouses_local_repository.dart';
 import '../models/warehouse_model.dart';
 import 'warehouse_details_screen.dart';
@@ -42,6 +43,8 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
   int _movementTotal = 0;
   List<WarehouseDeleteRequest> _deleteRequests = [];
   bool _canApproveDeletes = false;
+  String? _stationHint;
+  String? _ownWarehouseId;
 
   @override
   void initState() {
@@ -61,7 +64,27 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
     }
 
     try {
-      final warehouses = await _warehousesRepository.getWarehouses();
+      await StationGrants.applyForCurrentUser();
+      var warehouses = await _warehousesRepository.getWarehouses();
+      final attached = await StationGrants.isAttachedStation();
+      String? stationHint;
+      String? ownWarehouseId;
+      if (attached) {
+        final stationId =
+            (await AppServices.authStorage.readStationWarehouseId())?.trim() ??
+                '';
+        WarehouseModel? bound;
+        for (final warehouse in warehouses) {
+          if (warehouse.id == stationId) {
+            bound = warehouse;
+            break;
+          }
+        }
+        ownWarehouseId = bound?.id;
+        stationHint = bound == null
+            ? 'مواد كل المخازن ظاهرة للعرض. لم يُحدد مخزن لهذه الحاسبة، لذلك لا يمكن السحب.'
+            : 'مواد كل المخازن ظاهرة. السحب والبيع والإخراج من مخزن «${bound.name}» فقط.';
+      }
 
       for (final warehouse in warehouses) {
         debugPrint(
@@ -242,7 +265,9 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
             storedRole: session?.user.role,
             accessToken: session?.accessToken,
           ),
-        );
+        ) && stationHint == null;
+        _stationHint = stationHint;
+        _ownWarehouseId = ownWarehouseId;
         _warehouses = warehouses;
         _products = products;
         _stockQty = {
@@ -367,8 +392,82 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
       if (text.isEmpty) {
         return true;
       }
-      return choice.label.contains(text) || choice.barcode.contains(text);
+      final query = text.toLowerCase();
+      return choice.label.toLowerCase().contains(query) ||
+          choice.barcode.toLowerCase().contains(query);
     }).take(8).toList();
+  }
+
+  List<_InventoryVariantChoice> _matchChoices(
+    List<_InventoryVariantChoice> choices,
+    String query,
+  ) {
+    final text = query.trim().toLowerCase();
+    if (text.isEmpty) return const [];
+    return choices
+        .where((choice) {
+          final label = choice.label.toLowerCase();
+          final barcode = choice.barcode.toLowerCase();
+          final shown = _choiceLabel(choice).toLowerCase();
+          return label.contains(text) ||
+              barcode.contains(text) ||
+              shown == text;
+        })
+        .take(8)
+        .toList();
+  }
+
+  String _choiceLabel(_InventoryVariantChoice choice) {
+    if (choice.barcode.trim().isEmpty) return choice.label;
+    return '${choice.label} — ${choice.barcode}';
+  }
+
+  Widget _choiceList({
+    required String query,
+    required List<_InventoryVariantChoice> choices,
+    required String selectedId,
+    required ValueChanged<_InventoryVariantChoice> onSelect,
+  }) {
+    final text = query.trim();
+    if (text.isEmpty) {
+      return const Align(
+        alignment: Alignment.centerRight,
+        child: Text(
+          'اكتب أول حرف لتظهر المواد، والخيار الأول يكون محدداً.',
+          style: TextStyle(fontSize: 12.5, color: AppTheme.secondaryTextColor),
+        ),
+      );
+    }
+    final matches = _matchChoices(choices, text);
+    if (matches.isEmpty) {
+      return const Align(
+        alignment: Alignment.centerRight,
+        child: Text(
+          'لا توجد مادة بهذا الحرف.',
+          style: TextStyle(fontSize: 12.5, color: AppTheme.secondaryTextColor),
+        ),
+      );
+    }
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 180),
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          for (final choice in matches)
+            ListTile(
+              dense: true,
+              selected: choice.variantId == selectedId,
+              selectedTileColor: const Color(0xFFD8F3E4),
+              title: Text(
+                _choiceLabel(choice),
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              onTap: () => onSelect(choice),
+            ),
+        ],
+      ),
+    );
   }
 
   String _qtyLabel(double value) {
@@ -666,11 +765,11 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
 
     return Row(
       children: [
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'المخازن',
                 style: TextStyle(
                   fontSize: 30,
@@ -679,12 +778,13 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                   color: AppTheme.primaryTextColor,
                 ),
               ),
-              SizedBox(
+              const SizedBox(
                 height: 6,
               ),
               Text(
-                'إدارة المخازن والكميات والتحويلات وحركة المواد.',
-                style: TextStyle(
+                _stationHint ??
+                    'إدارة المخازن والكميات والتحويلات وحركة المواد.',
+                style: const TextStyle(
                   fontSize: 13.5,
                   color: AppTheme.secondaryTextColor,
                 ),
@@ -724,55 +824,57 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
           width: 10,
         ),
 
-        OutlinedButton.icon(
-          onPressed: _showAddWarehouseDialog,
-          icon: const Icon(
-            Icons.warehouse_outlined,
-            size: 18,
+        if (_canApproveDeletes) ...[
+          OutlinedButton.icon(
+            onPressed: _showAddWarehouseDialog,
+            icon: const Icon(
+              Icons.warehouse_outlined,
+              size: 18,
+            ),
+            label: const Text(
+              'إضافة مخزن',
+            ),
           ),
-          label: const Text(
-            'إضافة مخزن',
+          const SizedBox(
+            width: 10,
           ),
-        ),
+        ],
 
-        const SizedBox(
-          width: 10,
-        ),
+        if (_stationHint == null) ...[
+          OutlinedButton.icon(
+            onPressed: _warehouses.length < 2 || choices.isEmpty
+                ? null
+                : _showTransferDialog,
+            icon: const Icon(
+              Icons.swap_horiz_rounded,
+              size: 18,
+            ),
+            label: const Text(
+              'تحويل بين المخازن',
+            ),
+          ),
+          const SizedBox(
+            width: 10,
+          ),
+          OutlinedButton.icon(
+            onPressed: _warehouses.length < 2 ? null : _showTransferAllDialog,
+            icon: const Icon(
+              Icons.move_down_rounded,
+              size: 18,
+            ),
+            label: const Text(
+              'نقل كل المواد',
+            ),
+          ),
+          const SizedBox(
+            width: 10,
+          ),
+        ],
 
         OutlinedButton.icon(
-          onPressed: _warehouses.length < 2 || choices.isEmpty
+          onPressed: _operationWarehouseIds.isEmpty
               ? null
-              : _showTransferDialog,
-          icon: const Icon(
-            Icons.swap_horiz_rounded,
-            size: 18,
-          ),
-          label: const Text(
-            'تحويل بين المخازن',
-          ),
-        ),
-
-        const SizedBox(
-          width: 10,
-        ),
-
-        OutlinedButton.icon(
-          onPressed: _warehouses.length < 2 ? null : _showTransferAllDialog,
-          icon: const Icon(
-            Icons.move_down_rounded,
-            size: 18,
-          ),
-          label: const Text(
-            'نقل كل المواد',
-          ),
-        ),
-
-        const SizedBox(
-          width: 10,
-        ),
-
-        OutlinedButton.icon(
-          onPressed: _warehouses.isEmpty ? null : _showAddMaterialsDialog,
+              : _showAddMaterialsDialog,
           icon: const Icon(
             Icons.inventory_outlined,
             size: 18,
@@ -787,7 +889,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
         ),
 
         ElevatedButton.icon(
-          onPressed: _warehouses.isEmpty || choices.isEmpty
+          onPressed: _operationWarehouseIds.isEmpty || choices.isEmpty
               ? null
               : _showStockMovementDialog,
           icon: const Icon(
@@ -975,6 +1077,10 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
 
                   },
                   onEdit: () {
+                    if (!_canChangeWarehouse(warehouse.id)) {
+                      _denyOtherWarehouse();
+                      return;
+                    }
                     if (warehouse.isSynced) {
                       _showSyncedWarehouseEditBlockedDialog(
                         warehouse,
@@ -988,16 +1094,28 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                     );
                   },
                   onToggleActive: () {
+                    if (!_canChangeWarehouse(warehouse.id)) {
+                      _denyOtherWarehouse();
+                      return;
+                    }
                     _toggleWarehouse(
                       warehouse,
                     );
                   },
                   onSubmitForApproval: () {
+                    if (!_canChangeWarehouse(warehouse.id)) {
+                      _denyOtherWarehouse();
+                      return;
+                    }
                     _submitWarehouseForApproval(
                       warehouse,
                     );
                   },
                   onRequestDelete: () {
+                    if (!_canChangeWarehouse(warehouse.id)) {
+                      _denyOtherWarehouse();
+                      return;
+                    }
                     _requestWarehouseDelete(warehouse);
                   },
                 );
@@ -2055,10 +2173,30 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
   // STOCK MOVEMENT DIALOG
   // ===========================================================================
 
+  List<String> get _operationWarehouseIds {
+    final own = _ownWarehouseId;
+    if (own == null) {
+      return _warehouses.map((warehouse) => warehouse.id).toList();
+    }
+    return [own];
+  }
+
+  bool _canChangeWarehouse(String warehouseId) {
+    final own = _ownWarehouseId;
+    return own == null || warehouseId == own;
+  }
+
+  void _denyOtherWarehouse() {
+    _showMessage(
+      'السحب والإخراج من مخزن هذه الحاسبة فقط. بقية المخازن للعرض.',
+    );
+  }
+
   Future<void> _showStockMovementDialog() async {
     final choices = _inventoryVariantChoices;
+    final allowed = _operationWarehouseIds;
 
-    if (_warehouses.isEmpty || choices.isEmpty) {
+    if (allowed.isEmpty || choices.isEmpty) {
       _showMessage(
         'لا توجد منتجات تحتوي على خيارات مخزون صالحة.',
       );
@@ -2068,9 +2206,11 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
 
     String selectedType = 'إدخال';
 
-    String selectedWarehouseId = _warehouses.first.id;
+    String selectedWarehouseId = allowed.first;
 
-    String selectedVariantId = choices.first.variantId;
+    String selectedVariantId = '';
+
+    final productController = TextEditingController();
 
     final quantityController = TextEditingController();
 
@@ -2121,16 +2261,15 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                       _DialogDropdown(
                         title: 'المخزن',
                         value: selectedWarehouseId,
-                        items: _warehouses
-                            .map(
-                              (warehouse) => warehouse.id,
-                        )
-                            .toList(),
+                        items: allowed,
                         labels: {
                           for (final warehouse in _warehouses)
-                            warehouse.id: warehouse.name,
+                            if (allowed.contains(warehouse.id))
+                              warehouse.id: warehouse.name,
                         },
-                        onChanged: (value) {
+                        onChanged: allowed.length == 1
+                            ? null
+                            : (value) {
                           if (value == null) {
                             return;
                           }
@@ -2145,30 +2284,40 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                       const SizedBox(
                         height: 14,
                       ),
-                      _DialogDropdown(
-                        title: 'المنتج / الخيار',
-                        value: selectedVariantId,
-                        items: choices
-                            .map(
-                              (choice) => choice.variantId,
-                        )
-                            .toList(),
-                        labels: {
-                          for (final choice in choices)
-                            choice.variantId: choice.barcode.trim().isEmpty
-                                ? choice.label
-                                : '${choice.label} — ${choice.barcode}',
-                        },
+                      TextField(
+                        controller: productController,
+                        textAlign: TextAlign.right,
+                        decoration: const InputDecoration(
+                          labelText: 'المنتج / الخيار',
+                          hintText: 'اكتب أول حرف من الاسم أو الباركود',
+                        ),
                         onChanged: (value) {
-                          if (value == null) {
-                            return;
-                          }
-
-                          setDialogState(
-                                () {
-                              selectedVariantId = value;
-                            },
-                          );
+                          setDialogState(() {
+                            final matches = _matchChoices(choices, value);
+                            if (matches.any(
+                              (choice) => choice.variantId == selectedVariantId,
+                            )) {
+                              return;
+                            }
+                            selectedVariantId = matches.isEmpty
+                                ? ''
+                                : matches.first.variantId;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _choiceList(
+                        query: productController.text,
+                        choices: choices,
+                        selectedId: selectedVariantId,
+                        onSelect: (choice) {
+                          setDialogState(() {
+                            selectedVariantId = choice.variantId;
+                            productController.text = _choiceLabel(choice);
+                            productController.selection = TextSelection.collapsed(
+                              offset: productController.text.length,
+                            );
+                          });
                         },
                       ),
                       const SizedBox(
@@ -2207,6 +2356,13 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                         quantityController.text.trim(),
                       ) ??
                           0;
+
+                      if (selectedVariantId.isEmpty) {
+                        _showMessage(
+                          'اكتب حرف المادة ثم اخترها من القائمة.',
+                        );
+                        return;
+                      }
 
                       if (quantity <= 0) {
                         _showMessage(
@@ -2265,6 +2421,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
       },
     );
 
+    productController.dispose();
     quantityController.dispose();
     noteController.dispose();
   }
@@ -2422,8 +2579,14 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
       return;
     }
 
-    String warehouseId = _warehouses.first.id;
-    String variantId = choices.first.variantId;
+    final allowed = _operationWarehouseIds;
+    if (allowed.isEmpty) {
+      _denyOtherWarehouse();
+      return;
+    }
+    String warehouseId = allowed.first;
+    String variantId = '';
+    final productController = TextEditingController();
     final quantityController = TextEditingController();
     final noteController = TextEditingController(text: 'إضافة مواد');
 
@@ -2449,30 +2612,53 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                         _DialogDropdown(
                           title: 'المخزن',
                           value: warehouseId,
-                          items: _warehouses.map((warehouse) => warehouse.id).toList(),
+                          items: allowed,
                           labels: {
                             for (final warehouse in _warehouses)
-                              warehouse.id: warehouse.name,
+                              if (allowed.contains(warehouse.id))
+                                warehouse.id: warehouse.name,
                           },
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setDialogState(() => warehouseId = value);
-                          },
+                          onChanged: allowed.length == 1
+                              ? null
+                              : (value) {
+                                  if (value == null) return;
+                                  setDialogState(() => warehouseId = value);
+                                },
                         ),
                         const SizedBox(height: 14),
-                        _DialogDropdown(
-                          title: 'المادة',
-                          value: variantId,
-                          items: choices.map((choice) => choice.variantId).toList(),
-                          labels: {
-                            for (final choice in choices)
-                              choice.variantId: choice.barcode.trim().isEmpty
-                                  ? choice.label
-                                  : '${choice.label} — ${choice.barcode}',
-                          },
+                        TextField(
+                          controller: productController,
+                          textAlign: TextAlign.right,
+                          decoration: const InputDecoration(
+                            labelText: 'المادة',
+                            hintText: 'اكتب أول حرف من الاسم أو الباركود',
+                          ),
                           onChanged: (value) {
-                            if (value == null) return;
-                            setDialogState(() => variantId = value);
+                            setDialogState(() {
+                              final matches = _matchChoices(choices, value);
+                              if (matches.any((choice) => choice.variantId == variantId)) {
+                                return;
+                              }
+                              variantId = matches.isEmpty
+                                  ? ''
+                                  : matches.first.variantId;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        _choiceList(
+                          query: productController.text,
+                          choices: choices,
+                          selectedId: variantId,
+                          onSelect: (choice) {
+                            setDialogState(() {
+                              variantId = choice.variantId;
+                              productController.text = _choiceLabel(choice);
+                              productController.selection =
+                                  TextSelection.collapsed(
+                                offset: productController.text.length,
+                              );
+                            });
                           },
                         ),
                         const SizedBox(height: 14),
@@ -2502,6 +2688,10 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                             quantityController.text.trim(),
                           ) ??
                           0;
+                      if (variantId.isEmpty) {
+                        _showMessage('اكتب حرف المادة ثم اخترها من القائمة.');
+                        return;
+                      }
                       if (quantity <= 0) {
                         _showMessage('أدخل كمية صحيحة.');
                         return;
@@ -2537,6 +2727,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
       },
     );
 
+    productController.dispose();
     quantityController.dispose();
     noteController.dispose();
   }
@@ -2672,12 +2863,16 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                         ),
                         onChanged: (value) {
                           setDialogState(() {
-                            final selected = _inventoryVariantChoices.where(
+                            final materials =
+                                _materialsInWarehouse(fromWarehouseId, value);
+                            if (materials.any(
                               (choice) => choice.variantId == selectedVariantId,
-                            );
-                            if (selected.isEmpty || selected.first.label != value) {
-                              selectedVariantId = '';
+                            )) {
+                              return;
                             }
+                            selectedVariantId = materials.isEmpty
+                                ? ''
+                                : materials.first.variantId;
                           });
                         },
                       ),
@@ -2836,6 +3031,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
             ListTile(
               dense: true,
               selected: choice.variantId == selectedVariantId,
+              selectedTileColor: const Color(0xFFD8F3E4),
               title: Text(
                 choice.label,
                 textAlign: TextAlign.right,
@@ -3830,7 +4026,7 @@ class _DialogDropdown extends StatelessWidget {
 
   final Map<String, String>? labels;
 
-  final ValueChanged<String?> onChanged;
+  final ValueChanged<String?>? onChanged;
 
   const _DialogDropdown({
     required this.title,

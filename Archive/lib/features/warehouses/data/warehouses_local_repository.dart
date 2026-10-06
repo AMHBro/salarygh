@@ -8,6 +8,7 @@ import '../../../core/lan/office_role.dart';
 import '../../../core/storage/auth_storage.dart';
 import '../../../core/sync/sync_operation.dart';
 import '../../../core/sync/sync_queue_repository.dart';
+import '../../users/data/station_grants.dart';
 import '../models/warehouse_model.dart';
 
 class WarehouseDeleteRequest {
@@ -235,6 +236,18 @@ class WarehousesLocalRepository {
     double? capacity,
     String? notes,
   }) async {
+    final session = await AuthStorage().readSession();
+    final role = resolveSessionRole(
+      storedRole: session?.user.role,
+      accessToken: session?.accessToken,
+    );
+    if (!canApproveWarehouseDelete(role) ||
+        await StationGrants.isAttachedStation()) {
+      throw StateError(
+        'إضافة المخزن للحاسبة الأساسية فقط. يعيّن المخزن من الحاسبات والصلاحيات.',
+      );
+    }
+
     final cleanName = name.trim();
 
     if (cleanName.isEmpty) {
@@ -588,6 +601,42 @@ class WarehousesLocalRepository {
   // POST /warehouses/{id}/enable
   // ===========================================================================
 
+  /// يُظهر مخزن الحاسبة الملحقة من جديد ويرسل تفعيله للسيرفر.
+  Future<void> ensureListed(WarehouseModel warehouse) async {
+    final current = await getWarehouseById(warehouse.id);
+    if (current == null) return;
+    if (current.deletedAt == null &&
+        current.isActive &&
+        current.status.trim().toUpperCase() == 'ACTIVE') {
+      return;
+    }
+
+    final now = DateTime.now();
+    await (database.update(database.warehouses)
+          ..where((table) => table.id.equals(current.id)))
+        .write(
+      WarehousesCompanion(
+        deletedAt: const Value(null),
+        isActive: const Value(true),
+        status: const Value('ACTIVE'),
+        updatedAt: Value(now),
+      ),
+    );
+
+    if ((current.serverId ?? '').trim().isEmpty) return;
+    final fresh = await getWarehouseById(current.id);
+    if (fresh == null) return;
+    final payload = fresh.toSyncJson();
+    payload['action'] = 'enable';
+    await syncQueue.enqueue(
+      entityType: 'warehouse',
+      entityId: current.id,
+      operation: SyncOperation.update,
+      idempotencyKey: '${current.id}:enable',
+      payload: payload,
+    );
+  }
+
   Future<void> setActive({
     required WarehouseModel warehouse,
     required bool isActive,
@@ -927,7 +976,11 @@ class WarehousesLocalRepository {
       ''',
       variables: [Variable.withString(warehouse.id)],
     ).getSingle();
-    if ((stock.read<num>('qty')).toDouble() > 0) {
+    final rawQty = stock.data['qty'];
+    final qty = rawQty is num
+        ? rawQty.toDouble()
+        : double.tryParse('${rawQty ?? ''}') ?? 0;
+    if (qty > 0) {
       throw StateError('انقل البضاعة من المخزن قبل طلب الحذف.');
     }
     final children = await (database.select(database.warehouses)

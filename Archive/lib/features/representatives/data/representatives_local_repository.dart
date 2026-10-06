@@ -667,6 +667,32 @@ class RepresentativesLocalRepository {
     );
   }
 
+  Future<void> deleteRepresentative(
+    RepresentativeModel representative,
+  ) async {
+    final now = DateTime.now();
+    await database.transaction(() async {
+      final affected = await (database.update(database.representatives)
+            ..where((table) => table.id.equals(representative.id)))
+          .write(
+        RepresentativesCompanion(
+          deletedAt: Value(now),
+          isActive: const Value(false),
+          updatedAt: Value(now),
+        ),
+      );
+      if (affected == 0) {
+        throw StateError('المندوب غير موجود.');
+      }
+      await syncQueue.enqueue(
+        entityType: 'representative',
+        entityId: representative.id,
+        operation: SyncOperation.delete,
+        payload: {'id': representative.id},
+      );
+    });
+  }
+
   // ===========================================================================
   // COMMISSION PAYMENT
   // ===========================================================================

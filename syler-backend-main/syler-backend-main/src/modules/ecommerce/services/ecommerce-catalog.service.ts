@@ -406,7 +406,11 @@ export class EcommerceCatalogService {
                         product.barcode,
 
                     image_url:
-                        product.image_url,
+                        this.storeImageRef(
+                            product.id,
+                            product.image_url,
+                            product.updated_at,
+                        ),
 
                     images:
                         product.images,
@@ -695,7 +699,11 @@ export class EcommerceCatalogService {
                     product.barcode,
 
                 image_url:
-                    product.image_url,
+                    this.storeImageRef(
+                        product.id,
+                        product.image_url,
+                        product.updated_at,
+                    ),
 
                 images:
                     product.images,
@@ -937,7 +945,11 @@ export class EcommerceCatalogService {
                 unit: product.units_of_measure?.name_ar ?? '',
                 price,
                 prices,
-                image_url: product.image_url,
+                image_url: this.storeImageRef(
+                    product.id,
+                    product.image_url,
+                    product.updated_at,
+                ),
                 category_id: categoryId,
                 category_name: categoryName,
                 stock,
@@ -952,6 +964,37 @@ export class EcommerceCatalogService {
             limit,
             has_more: hasMore,
             audience: audience === 'agent' ? 'agent' : 'customer',
+        };
+    }
+
+    storeImageRef(
+        productId: string,
+        imageUrl: string | null | undefined,
+        updatedAt?: Date | null,
+    ) {
+        const raw = (imageUrl ?? '').trim();
+        if (!raw) return null;
+        if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+        const stamp = updatedAt ? updatedAt.getTime() : 0;
+        return `https://hajecamell.store/api/v1/store/products/${productId}/image?v=${stamp}`;
+    }
+
+    async readProductImage(id: string) {
+        if (!/^[0-9a-f-]{36}$/i.test(id)) {
+            throw new NotFoundException('الصورة غير موجودة');
+        }
+        const product = await this.prisma.products.findUnique({
+            where: { id },
+            select: { image_url: true },
+        });
+        const raw = (product?.image_url ?? '').trim();
+        const match = raw.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/);
+        if (!match) {
+            throw new NotFoundException('الصورة غير موجودة');
+        }
+        return {
+            contentType: match[1].toLowerCase(),
+            body: Buffer.from(match[2].replace(/\s/g, ''), 'base64'),
         };
     }
 

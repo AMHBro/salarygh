@@ -15,6 +15,7 @@ import 'features/alira/presentation/shop_app.dart';
 import 'features/alira/presentation/web_home.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/dashboard/presentation/desktop_shell.dart';
+import 'features/users/data/station_grants.dart';
 import 'web_url.dart';
 
 class SalesApp extends StatelessWidget {

@@ -5,8 +5,11 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/paging/list_page.dart';
+import '../../../core/storage/auth_storage.dart';
 import '../../../core/sync/sync_operation.dart';
 import '../../../core/sync/sync_queue_repository.dart';
+import '../../inventory/data/inventory_local_repository.dart';
+import '../../inventory/models/stock_movement_model.dart';
 import '../models/product_model.dart';
 import '../models/product_variant_model.dart';
 
@@ -1830,40 +1833,28 @@ LIMIT ? OFFSET ?
       return;
     }
 
-    final warehouse = warehouses.firstWhere(
-      (row) => row.isMain,
-      orElse: () => warehouses.first,
-    );
+    final stationId =
+        (await AuthStorage().readStationWarehouseId())?.trim() ?? '';
+    final station = warehouses.cast<Warehouse?>().firstWhere(
+          (row) => row!.id == stationId,
+          orElse: () => null,
+        );
+    final warehouse = station ??
+        warehouses.firstWhere(
+          (row) => row.isMain,
+          orElse: () => warehouses.first,
+        );
     final addedPieces = cartons * factor;
-    final balances = await (database.select(database.stockBalances)
-          ..where(
-            (table) =>
-                table.variantId.equals(variantId) &
-                table.warehouseId.equals(warehouse.id),
-          )
-          ..limit(1))
-        .get();
-
-    if (balances.isEmpty) {
-      await database.into(database.stockBalances).insert(
-            StockBalancesCompanion.insert(
-              id: '$variantId::${warehouse.id}',
-              variantId: variantId,
-              warehouseId: warehouse.id,
-              quantity: Value(addedPieces),
-              updatedAt: now,
-            ),
-          );
-      return;
-    }
-
-    await (database.update(database.stockBalances)
-          ..where((table) => table.id.equals(balances.first.id)))
-        .write(
-      StockBalancesCompanion(
-        quantity: Value(balances.first.quantity + addedPieces),
-        updatedAt: Value(now),
-      ),
+    await InventoryLocalRepository(
+      database: database,
+      syncQueue: syncQueue,
+    ).addMovement(
+      variantId: variantId,
+      warehouseId: warehouse.id,
+      type: StockMovementType.adjustmentIn,
+      quantity: addedPieces,
+      referenceType: 'OPENING',
+      note: 'رصيد افتتاح المادة',
     );
   }
 }

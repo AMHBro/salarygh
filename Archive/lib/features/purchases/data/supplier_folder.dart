@@ -88,6 +88,12 @@ class SupplierFolder {
     final shortId = sheetId.length <= 8 ? sheetId : sheetId.substring(0, 8);
     final fileName = '$stamp ${_safeName(title)}-$shortId.jpg';
     await File(p.join(directory.path, fileName)).writeAsBytes(bytes);
+    final home = Platform.environment['USERPROFILE'] ?? Directory.current.path;
+    final dayFolder = Directory(
+      p.join(home, 'Documents', 'SaylerInbox', stamp, 'موردون', _safeName(supplierName)),
+    );
+    await dayFolder.create(recursive: true);
+    await File(p.join(dayFolder.path, fileName)).writeAsBytes(bytes);
     await _remember(sheetId);
   }
 

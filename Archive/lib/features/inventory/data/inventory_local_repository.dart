@@ -25,18 +25,13 @@ class InventoryLocalRepository {
     required String variantId,
     required String warehouseId,
   }) {
-    final balanceId = _balanceId(
-      variantId,
-      warehouseId,
-    );
-
     final query = database.select(
       database.stockBalances,
     )
       ..where(
-            (table) => table.id.equals(
-          balanceId,
-        ),
+            (table) =>
+            table.variantId.equals(variantId) &
+            table.warehouseId.equals(warehouseId),
       );
 
     return query.watchSingleOrNull().map(
@@ -51,23 +46,11 @@ class InventoryLocalRepository {
   Future<double> getStock({
     required String variantId,
     required String warehouseId,
-  }) async {
-    final balanceId = _balanceId(
-      variantId,
-      warehouseId,
+  }) {
+    return _getStockInternal(
+      variantId: variantId,
+      warehouseId: warehouseId,
     );
-
-    final row = await (database.select(
-      database.stockBalances,
-    )
-      ..where(
-            (table) => table.id.equals(
-          balanceId,
-        ),
-      ))
-        .getSingleOrNull();
-
-    return row?.quantity ?? 0;
   }
 
   // ===========================================================================
@@ -272,23 +255,11 @@ class InventoryLocalRepository {
         // 2. LOCAL CURRENT BALANCE
         // ---------------------------------------------------------------------
 
-        await database
-            .into(
-          database.stockBalances,
-        )
-            .insertOnConflictUpdate(
-          StockBalancesCompanion.insert(
-            id: _balanceId(
-              variantId,
-              warehouseId,
-            ),
-            variantId: variantId,
-            warehouseId: warehouseId,
-            quantity: Value(
-              newStock,
-            ),
-            updatedAt: now,
-          ),
+        await _setStock(
+          variantId: variantId,
+          warehouseId: warehouseId,
+          quantity: newStock,
+          updatedAt: now,
         );
 
         // ---------------------------------------------------------------------
@@ -445,50 +416,22 @@ class InventoryLocalRepository {
         // 3. SOURCE BALANCE
         // ---------------------------------------------------------------------
 
-        await database
-            .into(
-          database.stockBalances,
-        )
-            .insertOnConflictUpdate(
-          StockBalancesCompanion.insert(
-            id: _balanceId(
-              variantId,
-              fromWarehouseId,
-            ),
-            variantId: variantId,
-            warehouseId:
-            fromWarehouseId,
-            quantity: Value(
-              sourceStock -
-                  quantity,
-            ),
-            updatedAt: now,
-          ),
+        await _setStock(
+          variantId: variantId,
+          warehouseId: fromWarehouseId,
+          quantity: sourceStock - quantity,
+          updatedAt: now,
         );
 
         // ---------------------------------------------------------------------
         // 4. DESTINATION BALANCE
         // ---------------------------------------------------------------------
 
-        await database
-            .into(
-          database.stockBalances,
-        )
-            .insertOnConflictUpdate(
-          StockBalancesCompanion.insert(
-            id: _balanceId(
-              variantId,
-              toWarehouseId,
-            ),
-            variantId: variantId,
-            warehouseId:
-            toWarehouseId,
-            quantity: Value(
-              destinationStock +
-                  quantity,
-            ),
-            updatedAt: now,
-          ),
+        await _setStock(
+          variantId: variantId,
+          warehouseId: toWarehouseId,
+          quantity: destinationStock + quantity,
+          updatedAt: now,
         );
 
         // ---------------------------------------------------------------------
@@ -623,6 +566,31 @@ class InventoryLocalRepository {
     return query.get();
   }
 
+  /// كمية افتتاح كُتبت على المخزن الرئيسي تنتقل لمخزن الحاسبة الملحقة.
+  Future<void> moveRecentOpeningStock(String stationWarehouseId) async {
+    final stationId = stationWarehouseId.trim();
+    if (stationId.isEmpty) return;
+    await _validateWarehouseExists(stationId);
+    final cutoff = DateTime.now().subtract(const Duration(days: 2));
+    final balances = await database.select(database.stockBalances).get();
+    for (final row in balances) {
+      if (row.warehouseId == stationId || row.quantity <= 0) continue;
+      if (row.updatedAt.isBefore(cutoff)) continue;
+      final movements = await countMovements(
+        variantId: row.variantId,
+        warehouseId: row.warehouseId,
+      );
+      if (movements > 0) continue;
+      await transferStock(
+        variantId: row.variantId,
+        fromWarehouseId: row.warehouseId,
+        toWarehouseId: stationId,
+        quantity: row.quantity,
+        note: 'نقل رصيد الافتتاح إلى مخزن الحاسبة',
+      );
+    }
+  }
+
   Future<int> countMovements({
     String? variantId,
     String? warehouseId,
@@ -647,20 +615,56 @@ class InventoryLocalRepository {
     required String variantId,
     required String warehouseId,
   }) async {
-    final row = await (database.select(
-      database.stockBalances,
-    )
-      ..where(
-            (table) => table.id.equals(
-          _balanceId(
-            variantId,
-            warehouseId,
-          ),
-        ),
-      ))
-        .getSingleOrNull();
-
+    final row = await _balanceRow(
+      variantId: variantId,
+      warehouseId: warehouseId,
+    );
     return row?.quantity ?? 0;
+  }
+
+  Future<StockBalance?> _balanceRow({
+    required String variantId,
+    required String warehouseId,
+  }) {
+    return (database.select(database.stockBalances)
+          ..where(
+            (table) =>
+                table.variantId.equals(variantId) &
+                table.warehouseId.equals(warehouseId),
+          ))
+        .getSingleOrNull();
+  }
+
+  Future<void> _setStock({
+    required String variantId,
+    required String warehouseId,
+    required double quantity,
+    required DateTime updatedAt,
+  }) async {
+    final existing = await _balanceRow(
+      variantId: variantId,
+      warehouseId: warehouseId,
+    );
+    if (existing != null) {
+      await (database.update(database.stockBalances)
+            ..where((table) => table.id.equals(existing.id)))
+          .write(
+        StockBalancesCompanion(
+          quantity: Value(quantity),
+          updatedAt: Value(updatedAt),
+        ),
+      );
+      return;
+    }
+    await database.into(database.stockBalances).insert(
+          StockBalancesCompanion.insert(
+            id: _balanceId(variantId, warehouseId),
+            variantId: variantId,
+            warehouseId: warehouseId,
+            quantity: Value(quantity),
+            updatedAt: updatedAt,
+          ),
+        );
   }
 
   // ===========================================================================

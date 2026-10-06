@@ -124,10 +124,10 @@ class DirectSalesSyncRemoteGateway
         .getSingleOrNull();
 
     if (warehouse == null) {
-      throw StateError(
-        'المخزن المرتبط بفاتورة '
-            '"${sale.invoiceNumber}" غير موجود محلياً.',
+      debugPrint(
+        '[DIRECT SALE SYNC] CREATE skipped: warehouse was removed.',
       );
+      return;
     }
 
     if (!warehouse.isActive) {
@@ -448,10 +448,24 @@ class DirectSalesSyncRemoteGateway
       if (error.response?.statusCode != 404) {
         rethrow;
       }
-      response = await apiClient.post(
-        '/direct-sales',
-        data: payload,
-      );
+      try {
+        response = await apiClient.post(
+          '/direct-sales',
+          data: payload,
+        );
+      } on DioException catch (directError) {
+        final body = '${directError.response?.data}';
+        final missingWarehouse = directError.response?.statusCode == 404 &&
+            (body.contains('المخزن غير موجود') ||
+                body.contains('WAREHOUSE_NOT_FOUND'));
+        if (missingWarehouse) {
+          debugPrint(
+            '[DIRECT SALE SYNC] CREATE skipped: warehouse is gone on the server.',
+          );
+          return;
+        }
+        rethrow;
+      }
     }
 
     final responseData =
@@ -662,6 +676,54 @@ class DirectSalesSyncRemoteGateway
   // ===========================================================================
   // PULL SINGLE SALE
   // ===========================================================================
+
+  Future<void> _ensurePulledCustomerLedger({
+    required String customerId,
+    required String saleId,
+    required double total,
+    required double paid,
+    required DateTime createdAt,
+  }) async {
+    final saleLedger = await (database.select(database.customerLedgerEntries)
+          ..where(
+            (table) =>
+                table.referenceId.equals(saleId) & table.type.equals('SALE'),
+          ))
+        .getSingleOrNull();
+    if (saleLedger == null) {
+      await database.into(database.customerLedgerEntries).insert(
+            CustomerLedgerEntriesCompanion.insert(
+              id: _uuid.v4(),
+              customerId: customerId,
+              type: 'SALE',
+              amount: total < 0 ? 0 : total,
+              referenceType: const Value('SALE'),
+              referenceId: Value(saleId),
+              createdAt: createdAt,
+            ),
+          );
+    }
+    if (paid <= 0) return;
+    final paidLedger = await (database.select(database.customerLedgerEntries)
+          ..where(
+            (table) =>
+                table.referenceId.equals(saleId) &
+                table.referenceType.equals('SALE_PAYMENT'),
+          ))
+        .getSingleOrNull();
+    if (paidLedger != null) return;
+    await database.into(database.customerLedgerEntries).insert(
+          CustomerLedgerEntriesCompanion.insert(
+            id: _uuid.v4(),
+            customerId: customerId,
+            type: 'RECEIPT',
+            amount: paid,
+            referenceType: const Value('SALE_PAYMENT'),
+            referenceId: Value(saleId),
+            createdAt: createdAt,
+          ),
+        );
+  }
 
   Future<void> _pullSaleDetail(
       String serverId, {
@@ -1072,6 +1134,16 @@ class DirectSalesSyncRemoteGateway
                 updatedAt,
               ),
             ),
+          );
+        }
+
+        if (localCustomerId != null) {
+          await _ensurePulledCustomerLedger(
+            customerId: localCustomerId,
+            saleId: localSaleId,
+            total: total,
+            paid: paidAmount,
+            createdAt: createdAt,
           );
         }
 

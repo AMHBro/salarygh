@@ -6,6 +6,7 @@ import '../../../core/storage/auth_storage.dart';
 import '../../../core/printing/print_preview.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../representatives/data/rep_debt_ceiling.dart';
+import '../../users/data/station_grants.dart';
 import '../../warehouses/models/warehouse_model.dart';
 import '../models/ecommerce_order_model.dart';
 
@@ -67,6 +68,7 @@ class _EcommerceOrderDetailsScreenState
 
   bool _loading = false;
   bool _processing = false;
+  bool _canApproveOrders = true;
 
   String? _error;
 
@@ -80,6 +82,10 @@ class _EcommerceOrderDetailsScreenState
 
     _refresh();
     _loadDebtWarning();
+    StationGrants.isAttachedStation().then((attached) {
+      if (!mounted) return;
+      setState(() => _canApproveOrders = !attached);
+    });
   }
 
   Future<void> _loadDebtWarning() async {
@@ -154,6 +160,10 @@ class _EcommerceOrderDetailsScreenState
     List<WarehouseModel> warehouses;
     String? inactiveName;
     String? inactiveStatus;
+    if (!_canApproveOrders) {
+      _showMessage('الموافقة على قوائم المتجر والمندوب للحاسبة الأساسية فقط.');
+      return;
+    }
     final cloudIdByLocalId = <String, String>{};
 
     try {
@@ -480,6 +490,10 @@ class _EcommerceOrderDetailsScreenState
   // ===========================================================================
 
   Future<void> _showRejectDialog() async {
+    if (!_canApproveOrders) {
+      _showMessage('الموافقة على قوائم المتجر والمندوب للحاسبة الأساسية فقط.');
+      return;
+    }
     final controller = TextEditingController();
 
     final reason = await showDialog<String>(
@@ -1050,6 +1064,12 @@ class _EcommerceOrderDetailsScreenState
   }
 
   Widget _buildActions() {
+    if (!_canApproveOrders) {
+      return const Text(
+        'الموافقة على قوائم المتجر والمندوب للحاسبة الأساسية فقط.',
+        style: TextStyle(color: AppTheme.secondaryTextColor),
+      );
+    }
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [

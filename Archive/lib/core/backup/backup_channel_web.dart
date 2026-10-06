@@ -1,6 +1,6 @@
 import 'package:universal_html/html.dart' as html;
 
-Future<void> saveBackupFile(String name, String contents) async {
+Future<bool> saveBackupFile(String name, String contents) async {
   final blob = html.Blob([contents], 'application/json');
   final url = html.Url.createObjectUrlFromBlob(blob);
   final anchor = html.AnchorElement(href: url)

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/di/app_services.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../warehouses/models/warehouse_model.dart';
+import '../data/station_grants.dart';
 
 class StationsScreen extends StatefulWidget {
   const StationsScreen({super.key});
@@ -23,6 +25,8 @@ class _StationsScreenState extends State<StationsScreen> {
   List<_RoleChoice> _roles = const [];
   String? _roleId;
   List<_Station> _stations = const [];
+  List<WarehouseModel> _warehouses = const [];
+  Map<String, String> _grants = const {};
 
   @override
   void initState() {
@@ -64,11 +68,22 @@ class _StationsScreenState extends State<StationsScreen> {
           }
         }
       }
+      final grants = await StationGrants.read();
+      final warehouses = await AppServices.warehousesRepository.getWarehouses();
       if (!mounted) return;
       setState(() {
         _roles = roles;
         _roleId ??= roles.isEmpty ? null : roles.first.id;
         _stations = stations;
+        _grants = grants;
+        _warehouses = warehouses
+            .where(
+              (warehouse) =>
+                  warehouse.isActive &&
+                  warehouse.deletedAt == null &&
+                  (warehouse.serverId ?? '').trim().isNotEmpty,
+            )
+            .toList();
         _loading = false;
       });
     } catch (error) {
@@ -138,6 +153,71 @@ class _StationsScreenState extends State<StationsScreen> {
     }
   }
 
+  Future<void> _setWarehouse(_Station station, String? serverId) async {
+    try {
+      await StationGrants.save(station.id, serverId);
+      if (!mounted) return;
+      setState(() {
+        _grants = {
+          ..._grants,
+          if ((serverId ?? '').trim().isNotEmpty) station.id: serverId!.trim(),
+        };
+        if ((serverId ?? '').trim().isEmpty) {
+          _grants.remove(station.id);
+        }
+        _notice = 'صار دخول ${station.name} على المخزن الذي اخترته. البيع والشراء يظهران هنا بعد المزامنة.';
+        _error = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _message(error));
+    }
+  }
+
+  Future<void> _delete(_Station station) async {
+    final session = await AppServices.authStorage.readSession();
+    if (session?.user.id == station.id) {
+      setState(() => _error = 'لا يمكن حذف الحساب الذي دخلت به.');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('حذف الحاسبة'),
+            content: Text('حذف دخول «${station.name}»؟ لن يستطيع فتح النظام بهذا الحساب.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('حذف'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await StationGrants.save(station.id, null);
+      await AppServices.apiClient.delete('/users/${station.id}');
+      if (!mounted) return;
+      setState(() {
+        _notice = 'حُذفت الحاسبة ${station.name}.';
+        _error = null;
+      });
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _message(error));
+    }
+  }
+
   Future<void> _toggle(_Station station) async {
     try {
       await AppServices.apiClient.patch(
@@ -149,6 +229,15 @@ class _StationsScreenState extends State<StationsScreen> {
       if (!mounted) return;
       setState(() => _error = _message(error));
     }
+  }
+
+  String? _grantValue(String userId) {
+    final serverId = _grants[userId]?.trim() ?? '';
+    if (serverId.isEmpty) return '';
+    for (final warehouse in _warehouses) {
+      if (warehouse.serverId == serverId) return serverId;
+    }
+    return '';
   }
 
   String _message(Object error) {
@@ -181,7 +270,7 @@ class _StationsScreenState extends State<StationsScreen> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'لكل حاسبة اسم دخول وكلمة مرور وصلاحية. الحاسبة الأساسية تفتح بهذه الصفحة بعد تسجيل دخول المسؤول.',
+              'لكل حاسبة اسم دخول وكلمة مرور. المسؤول يعيّن مخزناً واحداً، والحاسبة البعيدة تبيع وتشتري عليه فقط. عملياتها تظهر في خانة المسؤول وفي الكشوفات بعد المزامنة.',
               style: TextStyle(color: AppTheme.secondaryTextColor),
             ),
             const SizedBox(height: 16),
@@ -243,28 +332,67 @@ class _StationsScreenState extends State<StationsScreen> {
           Text(_notice!, style: const TextStyle(color: AppTheme.successColor)),
         ],
         const SizedBox(height: 20),
+        if (_warehouses.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text(
+              'لا يوجد مخزن متزامن بعد. من المنتجات اضغط مزامنة الآن، ثم ارجع لهذه الصفحة لتعيين المخزن.',
+              style: TextStyle(color: AppTheme.secondaryTextColor),
+            ),
+          ),
         for (final station in _stations) ...[
           Material(
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
-            child: ListTile(
-              title: Text(station.name),
-              subtitle: Text('الدخول: ${station.username} · ${station.roleTitle(_roles)}'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  DropdownButton<String>(
-                    value: station.roleId,
-                    items: [
-                      for (final role in _roles)
-                        DropdownMenuItem(value: role.id, child: Text(role.title)),
+                  Text(station.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text('الدخول: ${station.username} · ${station.roleTitle(_roles)}'),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      DropdownButton<String>(
+                        value: station.roleId,
+                        items: [
+                          for (final role in _roles)
+                            DropdownMenuItem(value: role.id, child: Text(role.title)),
+                        ],
+                        onChanged: (value) => _setRole(station, value),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () => _toggle(station),
+                        child: Text(station.active ? 'إيقاف' : 'تفعيل'),
+                      ),
+                      TextButton(
+                        onPressed: () => _delete(station),
+                        child: const Text(
+                          'حذف',
+                          style: TextStyle(color: AppTheme.dangerColor),
+                        ),
+                      ),
                     ],
-                    onChanged: (value) => _setRole(station, value),
                   ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () => _toggle(station),
-                    child: Text(station.active ? 'إيقاف' : 'تفعيل'),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('${station.id}-${_grantValue(station.id)}'),
+                    initialValue: _grantValue(station.id),
+                    decoration: const InputDecoration(labelText: 'المخزن المسموح'),
+                    items: [
+                      const DropdownMenuItem(value: '', child: Text('بدون مخزن')),
+                      for (final warehouse in _warehouses)
+                        DropdownMenuItem(
+                          value: warehouse.serverId,
+                          child: Text(warehouse.name),
+                        ),
+                    ],
+                    onChanged: (value) => _setWarehouse(
+                      station,
+                      value == null || value.isEmpty ? null : value,
+                    ),
                   ),
                 ],
               ),

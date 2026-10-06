@@ -9,6 +9,7 @@ import '../../../core/storage/auth_storage.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../settings/data/company_settings_repository.dart';
 import '../../products/models/unit_model.dart';
+import '../../users/data/station_grants.dart';
 import '../../suppliers/models/supplier_model.dart';
 import '../../warehouses/models/warehouse_model.dart';
 import '../data/supplier_folder.dart';
@@ -174,6 +175,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
         }
       }
     }
+    try {
+      await AppServices.suppliersSyncRemoteGateway.importSearch(name);
+    } catch (_) {}
     final page = await _suppliersRepository.pageSuppliers(
       search: name,
       limit: 50,
@@ -226,6 +230,12 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
 
   Future<void> _loadSupplierPage() async {
     try {
+      final query = _supplierNameController.text.trim();
+      if (query.isNotEmpty) {
+        try {
+          await AppServices.suppliersSyncRemoteGateway.importSearch(query);
+        } catch (_) {}
+      }
       final page = await _suppliersRepository.pageSuppliers(
         limit: kListPageSize,
         offset: (_supplierPage - 1) * kListPageSize,

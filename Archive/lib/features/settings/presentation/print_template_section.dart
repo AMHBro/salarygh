@@ -4,15 +4,18 @@ import '../../../core/printing/print_preview.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/document_layout.dart';
 import '../models/print_settings.dart';
+import '../models/public_links.dart';
 import 'print_logo_pick.dart';
 
 class PrintTemplateSection extends StatefulWidget {
   final PrintSettings settings;
+  final String storeUrl;
   final ValueChanged<PrintSettings> onChanged;
 
   const PrintTemplateSection({
     super.key,
     required this.settings,
+    this.storeUrl = PublicLinks.shop,
     required this.onChanged,
   });
 
@@ -45,6 +48,7 @@ class _PrintTemplateSectionState extends State<PrintTemplateSection> {
         _LivePreview(
           kind: _preview,
           settings: settings,
+          storeUrl: widget.storeUrl,
           onKind: (value) => setState(() => _preview = value),
           onFieldMoved: (id, dx, dy) {
             _change(
@@ -351,12 +355,14 @@ class _LogoCard extends StatelessWidget {
 class _LivePreview extends StatelessWidget {
   final String kind;
   final PrintSettings settings;
+  final String storeUrl;
   final ValueChanged<String> onKind;
   final void Function(String id, double dx, double dy) onFieldMoved;
 
   const _LivePreview({
     required this.kind,
     required this.settings,
+    required this.storeUrl,
     required this.onKind,
     required this.onFieldMoved,
   });
@@ -393,6 +399,7 @@ class _LivePreview extends StatelessWidget {
             child: PrintSheetView(
               document: _sampleDocument(kind),
               settings: settings,
+              storeUrl: storeUrl,
               header: const DocumentHeader(
                 officeName: 'مكتب سايلر',
                 address: 'شارع فلسطين',

@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/network/api_client.dart';
@@ -169,18 +171,135 @@ class CustomerPaymentsSyncRemoteGateway
   // PULL
   // ===========================================================================
 
+  static const Uuid _uuid = Uuid();
+
   @override
   Future<SyncPullResult> pullChanges({
     String? cursor,
   }) async {
-    // حالياً لا يوجد endpoint مستقل في الـAPI
-    // لسحب جميع سندات قبض الزبائن.
-    //
-    // لذلك هذا الـGateway مسؤول عن PUSH فقط.
+    try {
+      final customers = await (database.select(database.customers)
+            ..where((table) => table.deletedAt.isNull()))
+          .get();
+      final byServerId = <String, Customer>{};
+      final byName = <String, Customer>{};
+      final nameCount = <String, int>{};
+      for (final customer in customers) {
+        final serverId = (customer.serverId ?? '').trim();
+        if (serverId.isNotEmpty) byServerId[serverId] = customer;
+        final key = customer.name.trim();
+        if (key.isEmpty) continue;
+        nameCount[key] = (nameCount[key] ?? 0) + 1;
+        byName[key] = customer;
+      }
+      var page = 1;
+      var saved = 0;
+      while (page <= 40) {
+        final response = await apiClient.get(
+          '/reports/cash/vouchers',
+          queryParameters: {
+            'page': '$page',
+            'limit': '100',
+          },
+        );
+        final rows = _rows(response.data);
+        if (rows.isEmpty) break;
+        for (final row in rows) {
+          if ('${row['voucher_type'] ?? ''}'.toUpperCase() != 'RECEIPT') {
+            continue;
+          }
+          final number = '${row['voucher_number'] ?? ''}'.trim();
+          final party = '${row['party_name'] ?? ''}'.trim();
+          final amount = _amount(row['amount_iqd']);
+          if (number.isEmpty || party.isEmpty || party == 'غير محدد' || amount == null || amount <= 0) {
+            continue;
+          }
+          final serverParty = '${row['customer_id'] ?? ''}'.trim();
+          final customer = serverParty.isNotEmpty
+              ? byServerId[serverParty]
+              : (nameCount[party] == 1 ? byName[party] : null);
+          if (customer == null) continue;
+          final existing = await (database.select(database.customerPayments)
+                ..where((table) => table.voucherNumber.equals(number)))
+              .getSingleOrNull();
+          if (existing != null) continue;
+          final createdAt = DateTime.tryParse('${row['created_at'] ?? row['voucher_date'] ?? ''}') ??
+              DateTime.now();
+          final invoiceNumber = '${row['invoice_number'] ?? ''}'.trim();
+          try {
+            final paymentId = _uuid.v4();
+            await database.into(database.customerPayments).insert(
+                  CustomerPaymentsCompanion.insert(
+                    id: paymentId,
+                    voucherNumber: number,
+                    customerId: customer.id,
+                    method: Value(_localMethod('${row['payment_method'] ?? ''}')),
+                    amount: amount,
+                    note: Value(_clean('${row['notes'] ?? ''}')),
+                    createdAt: createdAt,
+                  ),
+                );
+            if (invoiceNumber.isEmpty) {
+              final ledger = await (database.select(database.customerLedgerEntries)
+                    ..where(
+                      (table) =>
+                          table.referenceType.equals('VOUCHER') &
+                          table.referenceId.equals(number),
+                    ))
+                  .getSingleOrNull();
+              if (ledger == null) {
+                await database.into(database.customerLedgerEntries).insert(
+                      CustomerLedgerEntriesCompanion.insert(
+                        id: _uuid.v4(),
+                        customerId: customer.id,
+                        type: 'RECEIPT',
+                        amount: amount,
+                        referenceType: const Value('VOUCHER'),
+                        referenceId: Value(number),
+                        createdAt: createdAt,
+                      ),
+                    );
+              }
+            }
+            saved++;
+          } catch (error) {
+            debugPrint('[CUSTOMER PAYMENT SYNC] Skip voucher $number: $error');
+          }
+        }
+        if (rows.length < 100) break;
+        page++;
+      }
+      debugPrint('[CUSTOMER PAYMENT SYNC] Pulled $saved receipt(s).');
+    } catch (error) {
+      debugPrint('[CUSTOMER PAYMENT SYNC] Receipt pull skipped: $error');
+    }
     return const SyncPullResult(
       nextCursor: null,
       changes: [],
     );
+  }
+
+  List<Map<String, dynamic>> _rows(dynamic raw) {
+    final data = raw is Map && raw['data'] is List ? raw['data'] : raw;
+    if (data is! List) return const [];
+    return data.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  double? _amount(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse('$value');
+  }
+
+  String _localMethod(String raw) {
+    switch (raw.trim().toUpperCase()) {
+      case 'BANK_TRANSFER':
+      case 'BANK':
+        return 'BANK';
+      case 'CASH':
+        return 'CASH';
+      default:
+        return 'OTHER';
+    }
   }
 
   // ===========================================================================

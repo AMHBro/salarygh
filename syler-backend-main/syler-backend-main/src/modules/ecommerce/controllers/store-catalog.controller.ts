@@ -1,9 +1,11 @@
 import {
     Controller,
     Get,
+    Header,
     Param,
     Query,
     Req,
+    StreamableFile,
     UseGuards,
 } from '@nestjs/common';
 
@@ -84,6 +86,14 @@ export class StoreCatalogController {
     })
     async getCategories() {
         return this.catalogService.getCategories();
+    }
+
+    @Get('products/:id/image')
+    @Header('Cache-Control', 'public, max-age=86400')
+    @ApiOperation({ summary: 'صورة المنتج للمتجر والمندوب' })
+    async productImage(@Param('id') id: string) {
+        const image = await this.catalogService.readProductImage(id);
+        return new StreamableFile(image.body, { type: image.contentType });
     }
 
     @Get('products/:variantId')

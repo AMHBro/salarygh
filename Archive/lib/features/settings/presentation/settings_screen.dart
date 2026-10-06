@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/backup/local_backup.dart';
 import '../../../core/di/app_services.dart';
@@ -9,6 +10,7 @@ import '../data/company_settings_repository.dart';
 import '../data/print_settings_store.dart';
 import '../models/document_layout.dart';
 import '../models/print_settings.dart';
+import '../models/public_links.dart';
 import 'document_layout_section.dart';
 import 'print_template_section.dart';
 
@@ -35,6 +37,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _internetController = TextEditingController();
   final _lanMasterController = TextEditingController();
   final _lanTokenController = TextEditingController();
+  final _shopLinkController = TextEditingController(text: PublicLinks.shop);
+  final _agentLinkController = TextEditingController(text: PublicLinks.agent);
+  final _photosLinkController = TextEditingController(text: PublicLinks.photos);
+  final _followLinkController = TextEditingController(text: PublicLinks.follow);
 
   Map<String, dynamic> _settings = {};
   List<LayoutBlock> _invoiceLayout =
@@ -71,6 +77,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _internetController.dispose();
     _lanMasterController.dispose();
     _lanTokenController.dispose();
+    _shopLinkController.dispose();
+    _agentLinkController.dispose();
+    _photosLinkController.dispose();
+    _followLinkController.dispose();
     super.dispose();
   }
 
@@ -109,6 +119,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _invoiceLayout = DocumentLayouts.invoiceFrom(_settings);
       _receiptLayout = DocumentLayouts.receiptFrom(_settings);
       _documentHeader = DocumentLayouts.headerFrom(_settings);
+      final links = PublicLinks.fromSettings(_settings);
+      _shopLinkController.text = links.shopUrl;
+      _agentLinkController.text = links.agentUrl;
+      _photosLinkController.text = links.photosUrl;
+      _followLinkController.text = links.followUrl;
 
       setState(() {
         _loading = false;
@@ -214,6 +229,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       settings['opening_capital'] = capital;
     }
 
+    late final PublicLinks links;
+    try {
+      links = PublicLinks(
+        shopUrl: _requiredLink(_shopLinkController.text, PublicLinks.shop),
+        agentUrl: _requiredLink(_agentLinkController.text, PublicLinks.agent),
+        photosUrl: _requiredLink(_photosLinkController.text, PublicLinks.photos),
+        followUrl: _requiredLink(_followLinkController.text, PublicLinks.follow),
+      );
+    } on StateError catch (error) {
+      setState(() {
+        _error = error.message;
+        _notice = null;
+      });
+      return;
+    }
+    settings['public_links'] = links.toSettings();
+
     settings['document_layouts'] = DocumentLayouts.toSettings(
       invoice: _invoiceLayout,
       receipt: _receiptLayout,
@@ -242,6 +274,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       setState(() {
         _settings = settings;
+        _shopLinkController.text = links.shopUrl;
+        _agentLinkController.text = links.agentUrl;
+        _photosLinkController.text = links.photosUrl;
+        _followLinkController.text = links.followUrl;
         _saving = false;
         _notice = 'تم حفظ إعدادات الشركة.';
       });
@@ -270,7 +306,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       setState(() {
         _backupBusy = false;
-        _notice = 'تم تنزيل النسخة الاحتياطية. عدد السجلات: $count.';
+        _notice = count == null
+            ? 'أُلغي حفظ النسخة.'
+            : 'حُفظت النسخة على الجهاز. عدد السجلات: $count.';
       });
     } catch (error) {
       if (!mounted) {
@@ -326,7 +364,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _backupBusy = false;
         _notice = count == null
             ? 'لم يُختر ملف.'
-            : 'تم الاسترجاع. عدد السجلات: $count. حدّث الصفحة لترى البيانات.';
+            : 'تم الاسترجاع. عدد السجلات: $count. أغلق النظام وافتحه من جديد لترى البيانات.';
       });
     } catch (error) {
       if (!mounted) {
@@ -487,8 +525,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               hint: 'المبلغ الذي تبدأ به. البيع يضيف الربح، والشراء والقبض والصرف لا يغيرونه',
             ),
             const SizedBox(height: 8),
+            const Text(
+              'الروابط',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'روابط المتجر والمندوب ورفع الصور ومتابعة المدير. رابط المتجر يُطبع كرمز على الفاتورة. اضغط حفظ في الأسفل لتثبيتها.',
+              style: TextStyle(color: AppTheme.secondaryTextColor),
+            ),
+            const SizedBox(height: 12),
+            _linkField(_shopLinkController, 'رابط المتجر'),
+            _linkField(_agentLinkController, 'رابط المندوب'),
+            _linkField(_photosLinkController, 'رابط رفع الصور'),
+            _linkField(_followLinkController, 'رابط متابعة المدير'),
+            const SizedBox(height: 12),
             PrintTemplateSection(
               settings: _printSettings,
+              storeUrl: _shopLinkController.text.trim().isEmpty
+                  ? PublicLinks.shop
+                  : _shopLinkController.text.trim(),
               onChanged: (value) {
                 setState(() {
                   _printSettings = value;
@@ -535,7 +591,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'هذا الملف نسخة SQLite لهذه الحاسبة فقط، بما فيها فواتير لم تُرفع بعد. لا يشمل حاسبات المكتب الأخرى ولا قاعدة الخادم. نسخة المكتب تُؤخذ على جهاز الخادم بالأمر npm run db:backup.',
+              'يحفظ ملف هذه الحاسبة على الجهاز، بما فيها فواتير لم تُرفع بعد. لا يشمل حاسبات المكتب الأخرى ولا قاعدة الخادم.',
               style: TextStyle(color: AppTheme.secondaryTextColor),
             ),
             const SizedBox(height: 12),
@@ -544,13 +600,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 OutlinedButton.icon(
                   onPressed: _backupBusy ? null : _exportBackup,
                   icon: const Icon(Icons.download_outlined, size: 18),
-                  label: const Text('تنزيل نسخة'),
+                  label: const Text('حفظ نسخة'),
                 ),
                 const SizedBox(width: 10),
                 FilledButton.icon(
                   onPressed: _backupBusy ? null : _restoreBackup,
                   icon: const Icon(Icons.upload_outlined, size: 18),
-                  label: const Text('رفع النسخة واسترجاعها'),
+                  label: const Text('استرجاع من ملف'),
                 ),
               ],
             ),
@@ -563,6 +619,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  String _requiredLink(String raw, String fallback) {
+    final text = raw.trim();
+    if (text.isEmpty) return fallback;
+    final uri = Uri.tryParse(text);
+    if (uri == null ||
+        (uri.scheme != 'http' && uri.scheme != 'https') ||
+        uri.host.isEmpty) {
+      throw StateError('الرابط يجب أن يبدأ بـ https://');
+    }
+    return text;
+  }
+
+  Widget _linkField(TextEditingController controller, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(
+          labelText: label,
+          suffixIcon: IconButton(
+            tooltip: 'نسخ',
+            onPressed: () async {
+              final value = controller.text.trim();
+              if (value.isEmpty) return;
+              await Clipboard.setData(ClipboardData(text: value));
+              if (!mounted) return;
+              setState(() => _notice = 'تم نسخ الرابط.');
+            },
+            icon: const Icon(Icons.copy_outlined),
+          ),
         ),
       ),
     );

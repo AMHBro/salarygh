@@ -78,6 +78,12 @@ class _CustomersScreenState
     }
 
     try {
+      final query = _searchController.text.trim();
+      if (query.isNotEmpty) {
+        try {
+          await AppServices.customersSyncRemoteGateway.importSearch(query);
+        } catch (_) {}
+      }
       final result = await _repository.pageCustomers(
         offset: (nextPage - 1) * kListPageSize,
         search: _searchController.text,

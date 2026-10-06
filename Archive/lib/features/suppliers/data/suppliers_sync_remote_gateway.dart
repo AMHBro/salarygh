@@ -257,46 +257,46 @@ class SuppliersSyncRemoteGateway
     String? cursor,
   }) async {
     try {
-      final response =
-      await apiClient.get(
-        '/suppliers',
-      );
-
-      final raw =
-          response.data;
-
-      if (raw is! Map) {
-        throw StateError(
-          'استجابة الموردين غير صالحة.',
+      var page = 1;
+      var seen = 0;
+      var pulled = 0;
+      while (page <= 40) {
+        final response = await apiClient.get(
+          '/suppliers',
+          queryParameters: {
+            'page': '$page',
+            'limit': '100',
+          },
         );
-      }
-
-      final root =
-      Map<String, dynamic>.from(
-        raw,
-      );
-
-      if (root['success'] == false) {
-        throw StateError(
-          _messageFromMap(root) ??
-              'فشل تحميل الموردين.',
-        );
-      }
-
-      final rawSuppliers =
-      _extractSupplierList(
-        root['data'],
-      );
-
-      for (final item in rawSuppliers) {
-        await _upsertRemoteSupplier(
-          item,
-        );
+        final batch = _suppliersFromResponse(response.data);
+        if (batch.isEmpty) {
+          break;
+        }
+        seen += batch.length;
+        for (final item in batch) {
+          try {
+            await _upsertRemoteSupplier(item);
+            pulled++;
+          } catch (error) {
+            debugPrint('[SUPPLIER SYNC] Skip row: $error');
+          }
+        }
+        final root = response.data;
+        final total = root is Map
+            ? int.tryParse(
+                  '${(root['meta'] is Map ? root['meta']['total'] : '') ?? ''}',
+                ) ??
+                0
+            : 0;
+        if (batch.length < 100 || (total > 0 && seen >= total)) {
+          break;
+        }
+        page++;
       }
 
       debugPrint(
         '[SUPPLIER SYNC] Pulled '
-            '${rawSuppliers.length} supplier(s).',
+            '$pulled supplier(s).',
       );
 
       return const SyncPullResult(
@@ -341,9 +341,22 @@ class SuppliersSyncRemoteGateway
       return;
     }
 
-    // مهم:
-    // لا نعمل matching بالاسم أو الهاتف.
-    // الهوية الوحيدة الموثوقة هي serverId.
+    final claimed = await _unsyncedByName(
+      name: _stringOrEmpty(serverData['name']),
+      phone: _stringOrEmpty(serverData['phone']),
+    );
+    if (claimed != null) {
+      await _applyRemoteSnapshot(
+        localId: claimed.id,
+        serverData: serverData,
+        requiredServerId: serverId,
+      );
+      debugPrint(
+        '[SUPPLIER SYNC] Linked local supplier ${claimed.id} to $serverId',
+      );
+      return;
+    }
+
     final now = DateTime.now();
 
     final createdAt =
@@ -726,6 +739,72 @@ class SuppliersSyncRemoteGateway
     return Map<String, dynamic>.from(
       data,
     );
+  }
+
+  /// يجلب موردي السيرفر المطابقين للبحث حتى لا يُنشأ مورد مكرر.
+  Future<void> importSearch(String query) async {
+    final text = query.trim();
+    if (text.length < 2) {
+      return;
+    }
+    final response = await apiClient.get(
+      '/suppliers',
+      queryParameters: {
+        'search': text,
+        'page': '1',
+        'limit': '100',
+      },
+    );
+    for (final item in _suppliersFromResponse(response.data)) {
+      try {
+        await _upsertRemoteSupplier(item);
+      } catch (error) {
+        debugPrint('[SUPPLIER SEARCH] $error');
+      }
+    }
+  }
+
+  List<Map<String, dynamic>> _suppliersFromResponse(dynamic raw) {
+    if (raw is! Map) {
+      throw StateError('استجابة الموردين غير صالحة.');
+    }
+    final root = Map<String, dynamic>.from(raw);
+    if (root['success'] == false) {
+      throw StateError(
+        _messageFromMap(root) ?? 'فشل تحميل الموردين.',
+      );
+    }
+    return _extractSupplierList(root['data']);
+  }
+
+  Future<Supplier?> _unsyncedByName({
+    required String name,
+    required String phone,
+  }) async {
+    final wanted = name.trim();
+    if (wanted.isEmpty) {
+      return null;
+    }
+    final wantedPhone = phone.trim();
+    final rows = await (database.select(database.suppliers)
+          ..where(
+            (table) => table.deletedAt.isNull() & table.serverId.isNull(),
+          ))
+        .get();
+    final matches = rows.where((row) {
+      if (row.name.trim() != wanted) {
+        return false;
+      }
+      final localPhone = row.phone.trim();
+      if (wantedPhone.isEmpty || localPhone.isEmpty) {
+        return true;
+      }
+      return localPhone == wantedPhone;
+    }).toList();
+    if (matches.length != 1) {
+      return null;
+    }
+    return matches.first;
   }
 
   List<Map<String, dynamic>>

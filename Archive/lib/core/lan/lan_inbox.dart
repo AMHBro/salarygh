@@ -206,6 +206,7 @@ class LanInbox {
       exchangeRate: _number(payload['exchangeRate']),
       totalUsd: _number(payload['totalUsd']),
       notes: notes,
+      managementRelease: payload['managementRelease'] == true,
     );
   }
 

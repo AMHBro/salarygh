@@ -25,6 +25,9 @@ describe('SalesTransactionService posting', () => {
 
         const tx = {
             $queryRaw: async () => [{ id: 'stock-row' }],
+            companies: {
+                findFirst: async () => ({ settings: {} }),
+            },
             sales_invoices: {
                 findUnique: async ({ where }: any) => {
                     if (where.idempotency_key) {
@@ -136,6 +139,42 @@ describe('SalesTransactionService posting', () => {
         expect(state.movements).toHaveLength(1);
         expect(state.movements[0].reference_type).toBe('SALES_INVOICE');
         expect(state.movements[0].quantity.toString()).toBe('2');
+    });
+
+    it('يعلق البيع إذا تجاوزت فاتورة غير مسددة عمرها ويسمح للإدارة', async () => {
+        const service = new SalesTransactionService();
+        const state = world();
+        (state.tx as any).companies.findFirst = async () => ({
+            settings: { invoice_block_days: 30 },
+        });
+        (state.tx as any).sales_invoices.findMany = async () => ([
+            {
+                invoice_number: 'S-OLD',
+                invoice_date: new Date('2000-01-01T00:00:00.000Z'),
+                due_amount: new Prisma.Decimal(10),
+                status: 'PARTIAL',
+            },
+        ]);
+        (state.tx as any).users = {
+            findUnique: async () => ({ roles: { name: 'CASHIER' } }),
+        };
+
+        await expect(service.createSale(state.tx as any, payload)).rejects.toMatchObject({
+            response: {
+                code: 'UNPAID_INVOICE_HOLD',
+            },
+        });
+
+        (state.tx as any).users.findUnique = async () => ({ roles: { name: 'MANAGER' } });
+        const released = await service.createSale(state.tx as any, {
+            ...payload,
+            idempotency_key: 'sale-released',
+            created_by: 'manager-1',
+            management_release: true,
+        });
+
+        expect(released.already_exists).toBe(false);
+        expect(String(released.invoice.notes)).toContain('سُمح بالبيع بقرار الإدارة');
     });
 
     it('لا يكرر الفاتورة عند إعادة نفس مفتاح المزامنة', async () => {

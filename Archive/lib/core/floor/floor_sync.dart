@@ -105,7 +105,7 @@ class FloorSync {
       case 'sale_return_ledger':
         return _applyReturnLedger(database, body);
       case 'sale_return':
-        return true;
+        return _applySaleReturn(database, body);
       default:
         return true;
     }
@@ -287,12 +287,6 @@ class FloorSync {
     if (returnId.isEmpty || customer == null) {
       return false;
     }
-    final own = await (database.select(database.saleReturns)
-          ..where((table) => table.id.equals(returnId)))
-        .getSingleOrNull();
-    if (own != null) {
-      return true;
-    }
     final existing = await (database.select(database.customerLedgerEntries)
           ..where((table) => table.referenceId.equals(returnId)))
         .getSingleOrNull();
@@ -300,6 +294,13 @@ class FloorSync {
       return true;
     }
     final currency = body['currency'] == 'USD' ? 'USD' : 'IQD';
+    final voucher = '${body['voucher_number'] ?? ''}'.trim();
+    final invoice = '${body['invoice_number'] ?? ''}'.trim();
+    final note = voucher.isEmpty
+        ? 'مرتجع وصل من حاسبة أخرى'
+        : invoice.isEmpty
+            ? 'مرتجع $voucher'
+            : 'مرتجع $voucher لقائمة $invoice';
     await database.into(database.customerLedgerEntries).insert(
           CustomerLedgerEntriesCompanion.insert(
             id: _uuid.v4(),
@@ -309,11 +310,127 @@ class FloorSync {
             currency: Value(currency),
             referenceType: const Value('SALE_RETURN'),
             referenceId: Value(returnId),
-            note: const Value('مرتجع وصل من حاسبة أخرى'),
+            note: Value(note),
             serverVersion: const Value(0),
             createdAt: DateTime.now(),
           ),
         );
+    return true;
+  }
+
+  static Future<bool> _applySaleReturn(
+    AppDatabase database,
+    Map<String, dynamic> body,
+  ) async {
+    final returnId = '${body['return_id'] ?? ''}'.trim();
+    if (returnId.isEmpty) {
+      return true;
+    }
+    final own = await (database.select(database.saleReturns)
+          ..where((table) => table.id.equals(returnId)))
+        .getSingleOrNull();
+    if (own != null) {
+      return true;
+    }
+
+    final saleServerId = '${body['sale_server_id'] ?? ''}'.trim();
+    final voucher = '${body['voucher_number'] ?? ''}'.trim();
+    if (saleServerId.isEmpty || voucher.isEmpty) {
+      return true;
+    }
+    final sale = await (database.select(database.sales)
+          ..where((table) => table.serverId.equals(saleServerId)))
+        .getSingleOrNull();
+    if (sale == null || sale.deletedAt != null) {
+      return false;
+    }
+    final warehouse = await _localWarehouse(
+      database,
+      '${body['warehouse_id'] ?? ''}',
+    );
+    if (warehouse == null) {
+      return false;
+    }
+
+    String? customerId = sale.customerId;
+    final customerServerId = '${body['customer_id'] ?? ''}'.trim();
+    if (customerServerId.isNotEmpty) {
+      final customer = await _localCustomer(database, customerServerId);
+      if (customer == null) {
+        return false;
+      }
+      customerId = customer.id;
+    }
+
+    final rawLines = body['lines'];
+    if (rawLines is! List || rawLines.isEmpty) {
+      return true;
+    }
+    final items = await (database.select(database.saleItems)
+          ..where((table) => table.saleId.equals(sale.id)))
+        .get();
+    final used = <String>{};
+    final when = DateTime.tryParse('${body['created_at'] ?? ''}') ?? DateTime.now();
+    final lines = <SaleReturnItemsCompanion>[];
+    for (final raw in rawLines) {
+      if (raw is! Map) {
+        return false;
+      }
+      final variant = await _localVariant(
+        database,
+        '${raw['variant_id'] ?? ''}',
+      );
+      if (variant == null) {
+        return false;
+      }
+      SaleItem? match;
+      for (final item in items) {
+        if (item.variantId == variant.id && !used.contains(item.id)) {
+          match = item;
+          break;
+        }
+      }
+      if (match == null) {
+        return false;
+      }
+      used.add(match.id);
+      lines.add(
+        SaleReturnItemsCompanion.insert(
+          id: _uuid.v4(),
+          returnId: returnId,
+          saleItemId: match.id,
+          variantId: variant.id,
+          quantity: _asDouble(raw['quantity']),
+          unitPrice: _asDouble(raw['unit_price']),
+          total: _asDouble(raw['total']),
+          createdAt: when,
+        ),
+      );
+    }
+
+    final currency = body['currency'] == 'USD' ? 'USD' : 'IQD';
+    final note = '${body['note'] ?? ''}'.trim();
+    await database.transaction(() async {
+      await database.into(database.saleReturns).insert(
+            SaleReturnsCompanion.insert(
+              id: returnId,
+              voucherNumber: voucher,
+              saleId: sale.id,
+              customerId: Value(
+                customerId == null || customerId.trim().isEmpty ? null : customerId,
+              ),
+              warehouseId: warehouse.id,
+              total: _asDouble(body['amount']),
+              currency: Value(currency),
+              exchangeRate: Value(_asDouble(body['exchange_rate'])),
+              note: Value(note.isEmpty ? null : note),
+              createdAt: when,
+            ),
+          );
+      for (final line in lines) {
+        await database.into(database.saleReturnItems).insert(line);
+      }
+    });
     return true;
   }
 

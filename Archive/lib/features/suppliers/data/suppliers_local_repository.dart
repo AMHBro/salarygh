@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/money/fx_books.dart';
 import '../../../core/money/party_balance.dart';
 import '../../../core/paging/list_page.dart';
 import '../../../core/sync/sync_operation.dart';
@@ -650,6 +651,16 @@ WHERE s.deleted_at IS NULL AND s.is_active = 1
             createdAt: now,
           ),
         );
+
+        if (ledgerCurrency == 'USD' && exchangeRate > 0) {
+          await FxBooks(database).settleSupplierPayment(
+            entryId: ledgerId,
+            supplierId: supplierId,
+            usdAmount: amount,
+            rate: exchangeRate,
+            bookedOn: now,
+          );
+        }
 
         // -------------------------------------------------------------------
         // 3. Exactly one remote side-effect operation

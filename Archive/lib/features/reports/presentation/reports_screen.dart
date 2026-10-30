@@ -3,15 +3,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/auth/auth_user.dart';
+import '../../../core/money/fx_books.dart';
+import '../../../core/money/fx_math.dart';
 import '../../../core/di/app_services.dart';
 import '../../../core/paging/list_page.dart';
 import '../../../core/printing/print_preview.dart';
 import '../../../core/storage/auth_storage.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../products/data/products_local_repository.dart';
 import '../../representatives/models/representative_model.dart';
 import '../../warehouses/models/warehouse_model.dart';
 import '../../settings/data/company_settings_repository.dart';
 import '../../users/data/station_grants.dart';
+import '../../staff/data/staff_ledger.dart';
 import '../data/local_statements_repository.dart';
 import '../data/reports_repository.dart';
 import '../models/report_catalog.dart';
@@ -59,6 +63,7 @@ class _ReportsScreenState extends State<ReportsScreen>
   String? _from;
   String? _to;
   final _daysController = TextEditingController(text: '30');
+  final _marginController = TextEditingController(text: '2');
 
   List<Map<String, dynamic>> _rows = [];
   bool _loading = false;
@@ -104,6 +109,7 @@ class _ReportsScreenState extends State<ReportsScreen>
   void dispose() {
     _tabs.dispose();
     _daysController.dispose();
+    _marginController.dispose();
     super.dispose();
   }
 
@@ -319,6 +325,20 @@ class _ReportsScreenState extends State<ReportsScreen>
     }
   }
 
+  Future<int> _usdRateMillis() async {
+    final books = FxBooks(AppServices.database);
+    try {
+      final rate = await CompanySettingsRepository(
+        apiClient: AppServices.apiClient,
+      ).usdExchangeRate();
+      if (rate > 0) {
+        await books.rememberRate(rate);
+        return moneyMinor(rate);
+      }
+    } catch (_) {}
+    return books.savedRateMillis();
+  }
+
   Future<List<Map<String, dynamic>>> _capitalRows(
     DateTime? from,
     DateTime? to,
@@ -333,7 +353,7 @@ class _ReportsScreenState extends State<ReportsScreen>
     );
   }
 
-  Future<List<Map<String, dynamic>>> _localRows() {
+  Future<List<Map<String, dynamic>>> _localRows() async {
     final from = _parseDate(_from);
     final to = _parseDate(_to);
 
@@ -379,6 +399,23 @@ class _ReportsScreenState extends State<ReportsScreen>
         );
       case 'capital':
         return _capitalRows(from, to);
+      case 'dailyProfit':
+        return StaffLedger(AppServices.database).dailyProfit(
+          from: from,
+          to: to,
+          rateMillis: await _usdRateMillis(),
+        );
+      case 'stockValuation':
+        return FxBooks(AppServices.database).stockValuation(
+          await _usdRateMillis(),
+        );
+      case 'staffExpenses':
+        return StaffLedger(AppServices.database).expensesReport(
+          from: from,
+          to: to,
+        );
+      case 'priceMargins':
+        return AppServices.productsRepository.sellingMargins();
       default:
         return Future.value(const []);
     }
@@ -445,6 +482,95 @@ class _ReportsScreenState extends State<ReportsScreen>
         _to = value;
       }
     });
+  }
+
+  Future<void> _markDay(bool matched) async {
+    final day = _from ?? _to ?? staffDayKey(DateTime.now());
+    try {
+      await StaffLedger(AppServices.database).setMatched(day, matched);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = error.toString().replaceFirst('Bad state: ', '');
+      });
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          matched ? 'حساب $day مطابق' : 'حساب $day غير مطابق',
+        ),
+      ),
+    );
+    await _run();
+  }
+
+  Future<void> _raiseSellingPrices() async {
+    final millis = parsePricePercentMillis(_marginController.text);
+    if (millis == null) {
+      setState(() {
+        _error = 'اكتب نسبة مثل 2 أو 2.5';
+      });
+      return;
+    }
+    final typed = _marginController.text.trim();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('رفع سعر البيع'),
+          content: Text(
+            'سيرتفع سعر المفرد والجملة والمندوب بنسبة $typed٪ لكل المنتجات. سعر الشراء يبقى كما هو.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('تطبيق'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final count =
+          await AppServices.productsRepository.raiseSellingPrices(millis);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم تعديل سعر البيع لـ $count مادة بنسبة $typed٪'),
+        ),
+      );
+      if (_report.localKind == 'priceMargins' ||
+          _report.localKind == 'dailyProfit') {
+        await _run();
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loading = false;
+        _error = error.toString().replaceFirst('Bad state: ', '');
+      });
+    }
   }
 
   @override
@@ -574,6 +700,40 @@ class _ReportsScreenState extends State<ReportsScreen>
               if (_report.dates) ...[
                 _dateButton('من', _from, () => _pickDate(true)),
                 _dateButton('إلى', _to, () => _pickDate(false)),
+              ],
+              if (_report.localKind == 'dailyProfit') ...[
+                FilledButton(
+                  onPressed: _loading ? null : () => _markDay(true),
+                  child: const Text('الحساب مطابق'),
+                ),
+                OutlinedButton(
+                  onPressed: _loading ? null : () => _markDay(false),
+                  child: const Text('الحساب غير مطابق'),
+                ),
+                Text(
+                  'التحديد على ${_from ?? _to ?? 'اليوم'}',
+                  style: const TextStyle(color: AppTheme.secondaryTextColor),
+                ),
+              ],
+              if (_report.localKind == 'dailyProfit' ||
+                  _report.localKind == 'priceMargins') ...[
+                SizedBox(
+                  width: 120,
+                  child: TextField(
+                    controller: _marginController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                      signed: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'نسبة الرفع %',
+                    ),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: _loading ? null : _raiseSellingPrices,
+                  child: const Text('رفع سعر البيع لكل المنتجات'),
+                ),
               ],
               if (_report.localKind == 'group') _groupPicker(),
               if (_report.localKind == 'customersByRepresentative' ||

@@ -28,8 +28,10 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
 
   StreamSubscription<List<Sale>>?
   _salesSubscription;
+  StreamSubscription<List<SaleReturn>>? _returnsSubscription;
 
   List<Sale> _sales = [];
+  Map<String, List<String>> _returnVouchers = {};
 
   bool _isLoading = true;
   bool _isSyncing = false;
@@ -45,11 +47,13 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     );
 
     _listenToSales();
+    _listenToReturns();
   }
 
   @override
   void dispose() {
     _salesSubscription?.cancel();
+    _returnsSubscription?.cancel();
 
     _searchController.removeListener(
       _refresh,
@@ -101,6 +105,21 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
             );
           },
         );
+  }
+
+  void _listenToReturns() {
+    _returnsSubscription = _salesRepository.watchAllSaleReturns().listen((rows) {
+      if (!mounted) {
+        return;
+      }
+      final vouchers = <String, List<String>>{};
+      for (final row in rows) {
+        vouchers.putIfAbsent(row.saleId, () => []).add(row.voucherNumber);
+      }
+      setState(() {
+        _returnVouchers = vouchers;
+      });
+    });
   }
 
   Future<void> _synchronize() async {
@@ -841,18 +860,30 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
             children: [
               SizedBox(
                 width: 190,
-                child: Text(
-                  sale.invoiceNumber,
-                  maxLines: 1,
-                  overflow:
-                  TextOverflow
-                      .ellipsis,
-                  style:
-                  const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight:
-                    FontWeight.w700,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      sale.invoiceNumber,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if ((_returnVouchers[sale.id] ?? []).isNotEmpty)
+                      Text(
+                        'مرتجع ${(_returnVouchers[sale.id] ?? []).join('، ')}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFB26A00),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               SizedBox(

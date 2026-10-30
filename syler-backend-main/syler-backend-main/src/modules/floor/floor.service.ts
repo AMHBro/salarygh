@@ -112,10 +112,19 @@ export class FloorService implements OnModuleInit {
       const held = new Prisma.Decimal(`${others[0]?.held ?? 0}`);
       const available = onHand.sub(reserved).sub(held);
       if (available.lt(input.quantity)) {
+        const taken = reserved.add(held);
+        const reservedForAnother = taken.gt(0) && onHand.gte(input.quantity);
         throw new ConflictException({
           code: 'INSUFFICIENT_STOCK',
-          message: 'الكمية محجوزة لحاسبة أخرى أو غير متوفرة على السيرفر',
-          details: { available: Number(available) },
+          message: reservedForAnother
+            ? 'الكمية محجوزة لحاسبة أخرى'
+            : 'الكمية غير متوفرة على السيرفر في مخزن البيع',
+          details: {
+            available: Number(available),
+            on_hand: Number(onHand),
+            reserved: Number(reserved),
+            held: Number(held),
+          },
         });
       }
 
@@ -394,7 +403,19 @@ export class FloorService implements OnModuleInit {
     supplier_id?: string | null;
     amount?: number;
     currency?: string;
-    lines?: Array<{ variant_id?: string; quantity?: number }>;
+    sale_server_id?: string;
+    voucher_number?: string;
+    invoice_number?: string;
+    exchange_rate?: number;
+    total_iqd?: number;
+    note?: string | null;
+    created_at?: string;
+    lines?: Array<{
+      variant_id?: string;
+      quantity?: number;
+      unit_price?: number;
+      total?: number;
+    }>;
   }) {
     await this.ensureSchema();
     const kind = body.kind?.trim();
@@ -413,7 +434,16 @@ export class FloorService implements OnModuleInit {
         lines: (body.lines ?? []).map((line) => ({
           variantId: line.variant_id ?? '',
           quantity: Number(line.quantity ?? 0),
+          unitPrice: Number(line.unit_price ?? 0),
+          total: Number(line.total ?? 0),
         })),
+        saleServerId: body.sale_server_id ?? '',
+        voucherNumber: body.voucher_number ?? '',
+        invoiceNumber: body.invoice_number ?? '',
+        exchangeRate: Number(body.exchange_rate ?? 0),
+        totalIqd: Number(body.total_iqd ?? body.amount ?? 0),
+        note: body.note ?? null,
+        createdAt: body.created_at ?? null,
       });
     }
 
@@ -442,7 +472,19 @@ export class FloorService implements OnModuleInit {
     customerId: string | null;
     amount: number;
     currency: string;
-    lines: Array<{ variantId: string; quantity: number }>;
+    saleServerId: string;
+    voucherNumber: string;
+    invoiceNumber: string;
+    exchangeRate: number;
+    totalIqd: number;
+    note: string | null;
+    createdAt: string | null;
+    lines: Array<{
+      variantId: string;
+      quantity: number;
+      unitPrice: number;
+      total: number;
+    }>;
   }) {
     if (!input.warehouseId || input.lines.length === 0) {
       throw new BadRequestException('المرتجع بلا مخزن أو مواد');
@@ -488,6 +530,20 @@ export class FloorService implements OnModuleInit {
       await this.append(tx, 'sale_return', input.returnId, {
         return_id: input.returnId,
         warehouse_id: input.warehouseId,
+        sale_server_id: input.saleServerId,
+        voucher_number: input.voucherNumber,
+        invoice_number: input.invoiceNumber,
+        amount: input.totalIqd,
+        currency: input.currency,
+        exchange_rate: input.exchangeRate,
+        note: input.note,
+        created_at: input.createdAt,
+        lines: input.lines.map((line) => ({
+          variant_id: line.variantId,
+          quantity: line.quantity,
+          unit_price: line.unitPrice,
+          total: line.total,
+        })),
       });
 
       if (input.customerId && input.amount > 0) {
@@ -496,6 +552,8 @@ export class FloorService implements OnModuleInit {
           customer_id: input.customerId,
           amount: input.amount,
           currency: input.currency,
+          voucher_number: input.voucherNumber,
+          invoice_number: input.invoiceNumber,
         });
       }
 

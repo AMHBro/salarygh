@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/backup/local_backup.dart';
+import '../../../core/money/fx_books.dart';
 import '../../../core/di/app_services.dart';
 import '../../../core/lan/office_role.dart';
 import '../../../core/network/server_endpoint.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../sales/data/invoice_hold.dart';
 import '../data/company_settings_repository.dart';
 import '../data/print_settings_store.dart';
 import '../models/document_layout.dart';
@@ -33,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _taxController = TextEditingController();
   final _rateController = TextEditingController();
   final _capitalController = TextEditingController();
+  final _invoiceHoldController = TextEditingController();
   final _lanController = TextEditingController();
   final _internetController = TextEditingController();
   final _lanMasterController = TextEditingController();
@@ -73,6 +76,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _taxController.dispose();
     _rateController.dispose();
     _capitalController.dispose();
+    _invoiceHoldController.dispose();
     _lanController.dispose();
     _internetController.dispose();
     _lanMasterController.dispose();
@@ -116,6 +120,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _taxController.text = '${company['tax_number'] ?? ''}';
       _rateController.text = '${_settings['usd_exchange_rate'] ?? ''}';
       _capitalController.text = '${_settings['opening_capital'] ?? ''}';
+      final holdDays = parseInvoiceBlockDays(_settings['invoice_block_days']);
+      _invoiceHoldController.text = holdDays == 0 ? '' : '$holdDays';
       _invoiceLayout = DocumentLayouts.invoiceFrom(_settings);
       _receiptLayout = DocumentLayouts.receiptFrom(_settings);
       _documentHeader = DocumentLayouts.headerFrom(_settings);
@@ -220,6 +226,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       settings.remove('usd_exchange_rate');
     } else {
       settings['usd_exchange_rate'] = rate;
+      final parsed = double.tryParse(rate.replaceAll(',', ''));
+      if (parsed != null && parsed > 0) {
+        await FxBooks(AppServices.database).rememberRate(parsed);
+      }
     }
 
     final capital = _capitalController.text.trim().replaceAll(',', '');
@@ -228,6 +238,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } else {
       settings['opening_capital'] = capital;
     }
+
+    final holdText = _invoiceHoldController.text.trim();
+    final holdDays = holdText.isEmpty ? 0 : int.tryParse(holdText);
+    if (holdDays == null || holdDays < 0) {
+      setState(() {
+        _error = 'عمر تعليق الفاتورة يجب أن يكون عدداً من الأيام.';
+        _notice = null;
+      });
+      return;
+    }
+    settings['invoice_block_days'] = holdDays;
 
     late final PublicLinks links;
     try {
@@ -267,6 +288,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'tax_number': _emptyToNull(_taxController.text),
         'settings': settings,
       });
+
+      await InvoiceHoldStore.write(AppServices.database, holdDays);
 
       if (!mounted) {
         return;
@@ -523,6 +546,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _capitalController,
               'رأس المال',
               hint: 'المبلغ الذي تبدأ به. البيع يضيف الربح، والشراء والقبض والصرف لا يغيرونه',
+            ),
+            _field(
+              _invoiceHoldController,
+              'عمر تعليق الفاتورة بالأيام',
+              hint: 'إذا بقيت فاتورة الزبون غير مسددة أكثر من هذا العدد يُعلَّق البيع له، إلا بقرار الإدارة. اتركه فارغاً لإيقاف التعليق',
             ),
             const SizedBox(height: 8),
             const Text(

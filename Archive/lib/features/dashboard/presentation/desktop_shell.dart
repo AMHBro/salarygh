@@ -23,6 +23,7 @@ import '../../users/presentation/office_activity_screen.dart';
 import '../../users/data/station_grants.dart';
 import '../../users/presentation/stations_screen.dart';
 import '../../sales/presentation/sale_conflicts_screen.dart';
+import '../../staff/presentation/staff_accounts_screen.dart';
 import '../../sales/presentation/sales_screen.dart';
 import '../../suppliers/presentation/suppliers_screen.dart';
 import '../../warehouses/presentation/warehouses_screen.dart';
@@ -61,112 +62,122 @@ class _DesktopShellState
     _MenuItem(
       title: 'لوحة التحكم',
       icon: Icons.space_dashboard_outlined,
-      selectedIcon:
-      Icons.space_dashboard_rounded,
+      selectedIcon: Icons.space_dashboard_rounded,
+      accent: Color(0xFF3B6D8C),
     ),
     _MenuItem(
       title: 'المبيعات',
       icon: Icons.point_of_sale_outlined,
-      selectedIcon:
-      Icons.point_of_sale_rounded,
+      selectedIcon: Icons.point_of_sale_rounded,
+      accent: Color(0xFF1F7A4D),
     ),
     _MenuItem(
       title: 'طلبات المتجر',
       icon: Icons.shopping_bag_outlined,
-      selectedIcon:
-      Icons.shopping_bag_rounded,
+      selectedIcon: Icons.shopping_bag_rounded,
+      accent: Color(0xFFC43B5A),
     ),
     _MenuItem(
       title: 'الديون والدفعات',
       icon: Icons.payments_outlined,
-      selectedIcon:
-      Icons.payments_rounded,
+      selectedIcon: Icons.payments_rounded,
+      accent: Color(0xFFB8860B),
     ),
     _MenuItem(
       title: 'المنتجات',
       icon: Icons.inventory_2_outlined,
-      selectedIcon:
-      Icons.inventory_2_rounded,
+      selectedIcon: Icons.inventory_2_rounded,
+      accent: Color(0xFF2F6F8F),
     ),
     _MenuItem(
       title: 'المخازن',
       icon: Icons.warehouse_outlined,
-      selectedIcon:
-      Icons.warehouse_rounded,
+      selectedIcon: Icons.warehouse_rounded,
+      accent: Color(0xFF8A5A2B),
     ),
     _MenuItem(
       title: 'المشتريات',
       icon: Icons.shopping_bag_outlined,
-      selectedIcon:
-      Icons.shopping_bag_rounded,
+      selectedIcon: Icons.shopping_bag_rounded,
+      accent: Color(0xFF0E7490),
     ),
     _MenuItem(
       title: 'الزبائن',
       icon: Icons.people_outline_rounded,
-      selectedIcon:
-      Icons.people_rounded,
+      selectedIcon: Icons.people_rounded,
+      accent: Color(0xFF3D6B4F),
     ),
     _MenuItem(
       title: 'الموردون',
       icon: Icons.business_outlined,
-      selectedIcon:
-      Icons.business_rounded,
+      selectedIcon: Icons.business_rounded,
+      accent: Color(0xFF6B4C7A),
     ),
     _MenuItem(
       title: 'المندوبون',
       icon: Icons.badge_outlined,
-      selectedIcon:
-      Icons.badge_rounded,
+      selectedIcon: Icons.badge_rounded,
+      accent: Color(0xFFA15C38),
     ),
     _MenuItem(
       title: 'الأرشيف',
       icon: Icons.folder_outlined,
-      selectedIcon:
-      Icons.folder_rounded,
+      selectedIcon: Icons.folder_rounded,
+      accent: Color(0xFF5B6470),
     ),
     _MenuItem(
       title: 'التقارير',
       icon: Icons.bar_chart_outlined,
-      selectedIcon:
-      Icons.bar_chart_rounded,
+      selectedIcon: Icons.bar_chart_rounded,
+      accent: Color(0xFF2C5AA0),
     ),
     _MenuItem(
       title: 'الإعدادات',
       icon: Icons.settings_outlined,
-      selectedIcon:
-      Icons.settings_rounded,
+      selectedIcon: Icons.settings_rounded,
+      accent: Color(0xFF4A5568),
     ),
     _MenuItem(
       title: 'تطبيق المندوب',
       icon: Icons.route_outlined,
-      selectedIcon:
-      Icons.route_rounded,
+      selectedIcon: Icons.route_rounded,
+      accent: Color(0xFF0F766E),
     ),
     _MenuItem(
       title: 'متجر الزبون',
       icon: Icons.storefront_outlined,
-      selectedIcon:
-      Icons.storefront_rounded,
+      selectedIcon: Icons.storefront_rounded,
+      accent: Color(0xFFBE4B6A),
     ),
     _MenuItem(
       title: 'رأس المال',
       icon: Icons.savings_outlined,
       selectedIcon: Icons.savings_rounded,
+      accent: Color(0xFF1E6B5A),
     ),
     _MenuItem(
       title: 'خانة المسؤول',
       icon: Icons.notifications_outlined,
       selectedIcon: Icons.notifications_rounded,
+      accent: Color(0xFFC45C26),
     ),
     _MenuItem(
       title: 'الحاسبات والصلاحيات',
       icon: Icons.admin_panel_settings_outlined,
       selectedIcon: Icons.admin_panel_settings_rounded,
+      accent: Color(0xFF5C4B8A),
     ),
     _MenuItem(
       title: 'نواقص البيع',
       icon: Icons.report_outlined,
       selectedIcon: Icons.report_rounded,
+      accent: Color(0xFFB42318),
+    ),
+    _MenuItem(
+      title: 'حسابات الموظفين',
+      icon: Icons.badge_outlined,
+      selectedIcon: Icons.badge_rounded,
+      accent: Color(0xFF7A3E5C),
     ),
   ];
 
@@ -365,6 +376,14 @@ class _DesktopShellState
       case 18:
         return const SaleConflictsScreen();
 
+      case 19:
+        if (!_canOpenFinance) {
+          return const _RestrictedScreen(
+            title: 'حسابات الموظفين',
+          );
+        }
+        return const StaffAccountsScreen();
+
       default:
         return DashboardScreen(
           repository:
@@ -492,9 +511,55 @@ class _DesktopShellState
         children: [
           _buildSidebar(),
           Expanded(
-            child:
-            _buildCurrentScreen(),
+            child: _buildPageFrame(),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageFrame() {
+    final item = menuItems[selectedIndex];
+    final accent = item.accent;
+    return ColoredBox(
+      color: accent.withValues(alpha: 0.08),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.16),
+              border: Border(
+                bottom: BorderSide(
+                  color: accent.withValues(alpha: 0.45),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  item.title,
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: _buildCurrentScreen()),
         ],
       ),
     );
@@ -571,6 +636,7 @@ class _DesktopShellState
                 _buildMenuItem(8),
                 _buildMenuItem(9),
                 if (_canOpenFinance) _buildMenuItem(15),
+                if (_canOpenFinance) _buildMenuItem(19),
 
                 const SizedBox(height: 16),
 
@@ -619,22 +685,13 @@ class _DesktopShellState
       Alignment.centerRight,
       child: Row(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration:
-            BoxDecoration(
-              color:
-              AppTheme.primaryColor,
-              borderRadius:
-              BorderRadius.circular(
-                13,
-              ),
-            ),
-            child: const Icon(
-              Icons.auto_graph_rounded,
-              color: Colors.white,
-              size: 21,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(13),
+            child: Image.asset(
+              'assets/branding/app_icon.png',
+              width: 42,
+              height: 42,
+              fit: BoxFit.cover,
             ),
           ),
 
@@ -689,6 +746,7 @@ class _DesktopShellState
 
     final selected =
         selectedIndex == index;
+    final accent = item.accent;
 
     return Padding(
       padding:
@@ -697,9 +755,7 @@ class _DesktopShellState
       ),
       child: Material(
         color: selected
-            ? const Color(
-          0xFFF1F1F3,
-        )
+            ? accent.withValues(alpha: 0.14)
             : Colors.transparent,
         borderRadius:
         BorderRadius.circular(11),
@@ -717,7 +773,7 @@ class _DesktopShellState
               borderRadius: BorderRadius.circular(11),
               border: Border.all(
                 color: selected
-                    ? AppTheme.primaryColor
+                    ? accent
                     : AppTheme.borderColor,
                 width: selected ? 1.6 : 1.2,
               ),
@@ -729,14 +785,22 @@ class _DesktopShellState
             ),
             child: Row(
               children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Icon(
                   selected
                       ? item.selectedIcon
                       : item.icon,
                   size: 19,
                   color: selected
-                      ? AppTheme
-                      .primaryTextColor
+                      ? accent
                       : AppTheme
                       .secondaryTextColor,
                 ),
@@ -957,11 +1021,13 @@ class _MenuItem {
   final String title;
   final IconData icon;
   final IconData selectedIcon;
+  final Color accent;
 
   const _MenuItem({
     required this.title,
     required this.icon,
     required this.selectedIcon,
+    required this.accent,
   });
 }
 

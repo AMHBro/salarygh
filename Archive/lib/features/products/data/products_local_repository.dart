@@ -1857,4 +1857,199 @@ LIMIT ? OFFSET ?
       note: 'رصيد افتتاح المادة',
     );
   }
+
+  /// يرفع أسعار البيع فقط: المفرد والجملة والمندوب. سعر الشراء لا يتغير.
+  /// [percentMillis] واحد بالألف من النسبة: 2٪ = 2000.
+  Future<int> raiseSellingPrices(int percentMillis) async {
+    if (percentMillis == 0) {
+      throw StateError('اكتب نسبة مثل 2 أو 2.5');
+    }
+    final products = await getProducts();
+    var changed = 0;
+    for (final product in products) {
+      final retail = applyPercentToDinars(
+        wholeDinars(product.retailPrice),
+        percentMillis,
+      );
+      final wholesale = applyPercentToDinars(
+        wholeDinars(product.wholesalePrice),
+        percentMillis,
+      );
+      final representative = applyPercentToDinars(
+        wholeDinars(product.representativePrice),
+        percentMillis,
+      );
+      final variants = <ProductVariantModel>[];
+      var dirty = retail != wholeDinars(product.retailPrice) ||
+          wholesale != wholeDinars(product.wholesalePrice) ||
+          representative != wholeDinars(product.representativePrice);
+      for (final variant in product.variants) {
+        final variantRetail = applyPercentToDinars(
+          wholeDinars(variant.retailPrice),
+          percentMillis,
+        );
+        final variantWholesale = applyPercentToDinars(
+          wholeDinars(variant.wholesalePrice),
+          percentMillis,
+        );
+        final variantRepresentative = applyPercentToDinars(
+          wholeDinars(variant.representativePrice),
+          percentMillis,
+        );
+        dirty = dirty ||
+            variantRetail != wholeDinars(variant.retailPrice) ||
+            variantWholesale != wholeDinars(variant.wholesalePrice) ||
+            variantRepresentative != wholeDinars(variant.representativePrice);
+        variants.add(
+          variant.copyWith(
+            retailPrice: variantRetail.toDouble(),
+            wholesalePrice: variantWholesale.toDouble(),
+            representativePrice: variantRepresentative.toDouble(),
+          ),
+        );
+      }
+      if (!dirty) {
+        continue;
+      }
+      final updated = product.copyWith(
+        retailPrice: retail.toDouble(),
+        wholesalePrice: wholesale.toDouble(),
+        representativePrice: representative.toDouble(),
+        variants: variants,
+      );
+      try {
+        await updateProduct(product: updated);
+      } catch (error) {
+        throw StateError('توقف عند ${product.name}. $error');
+      }
+      changed++;
+    }
+    return changed;
+  }
+
+  Future<List<Map<String, dynamic>>> sellingMargins() async {
+    final products = await getProducts();
+    final rows = <Map<String, dynamic>>[];
+    for (final product in products) {
+      if (!product.isActive) {
+        continue;
+      }
+      if (product.variants.isEmpty) {
+        rows.add(
+          _marginRow(
+            product.name,
+            product.costPrice,
+            product.retailPrice,
+            product.wholesalePrice,
+          ),
+        );
+        continue;
+      }
+      for (final variant in product.variants) {
+        if (!variant.isActive) {
+          continue;
+        }
+        final option = variant.displayName;
+        final name = option == 'الخيار الرئيسي'
+            ? product.name
+            : '${product.name} - $option';
+        rows.add(
+          _marginRow(
+            name,
+            variant.costPrice,
+            variant.retailPrice,
+            variant.wholesalePrice,
+          ),
+        );
+      }
+    }
+    rows.sort(
+      (a, b) => '${a['material_name']}'.compareTo('${b['material_name']}'),
+    );
+    return rows;
+  }
+
+  Map<String, dynamic> _marginRow(
+    String name,
+    double cost,
+    double retail,
+    double wholesale,
+  ) {
+    final costWhole = wholeDinars(cost);
+    final retailWhole = wholeDinars(retail);
+    final wholesaleWhole = wholeDinars(wholesale);
+    return {
+      'material_name': name,
+      'buy_price': costWhole,
+      'retail_price': retailWhole,
+      'retail_margin': marginLabel(retailWhole - costWhole, costWhole),
+      'wholesale_price': wholesaleWhole,
+      'wholesale_margin': marginLabel(wholesaleWhole - costWhole, costWhole),
+    };
+  }
+}
+
+int wholeDinars(double value) {
+  if (value.isNaN || value.isInfinite) {
+    return 0;
+  }
+  return value.round();
+}
+
+int applyPercentToDinars(int amount, int percentMillis) {
+  if (amount <= 0 || percentMillis == 0) {
+    return amount;
+  }
+  final product = amount * (100000 + percentMillis);
+  if (product >= 0) {
+    return (product + 50000) ~/ 100000;
+  }
+  return (product - 50000) ~/ 100000;
+}
+
+/// 2 = 2000، و2.5 = 2500. النسبة بالألف من الواحد بالمئة.
+int? parsePricePercentMillis(String raw) {
+  var text = raw.replaceAll('٪', '').replaceAll('%', '').trim();
+  text = text.replaceAll(',', '.');
+  if (text.isEmpty) {
+    return null;
+  }
+  final negative = text.startsWith('-');
+  final body = negative ? text.substring(1) : text;
+  final parts = body.split('.');
+  if (parts.isEmpty || parts.length > 2 || parts.first.isEmpty) {
+    return null;
+  }
+  final whole = int.tryParse(parts.first);
+  if (whole == null) {
+    return null;
+  }
+  var fraction = 0;
+  if (parts.length == 2) {
+    final digits = parts[1];
+    if (digits.isEmpty || digits.length > 3) {
+      return null;
+    }
+    fraction = int.tryParse(digits.padRight(3, '0')) ?? -1;
+    if (fraction < 0) {
+      return null;
+    }
+  }
+  final millis = whole * 1000 + fraction;
+  if (millis == 0 || millis > 500000) {
+    return null;
+  }
+  return negative ? -millis : millis;
+}
+
+String marginLabel(int profit, int cost) {
+  if (cost <= 0) {
+    return '—';
+  }
+  final negative = profit < 0;
+  final scaled = (profit.abs() * 1000 / cost).round();
+  final whole = scaled ~/ 10;
+  final fraction = scaled % 10;
+  final text = fraction == 0 ? '$whole%' : '$whole.$fraction%';
+  return negative ? '-$text' : text;
 }

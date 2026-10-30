@@ -8,6 +8,13 @@ import {
 
 import { FloorService } from '../floor/floor.service';
 import { assertRepDebtCeiling } from '../representatives/rep-debt';
+import {
+    findOverdueHold,
+    invoiceBlockDays,
+    invoiceHoldMessage,
+    isHoldManager,
+    withManagementRelease,
+} from './invoice-hold';
 
 import {
     movement_type_enum,
@@ -96,11 +103,90 @@ export interface SalesTransactionPayload {
 
     /** USD لا يُقاس على سقف الدينار. */
     currency?: string | null;
+
+    /**
+     * سماح صريح من الإدارة ببيع زبون لديه فاتورة متأخرة.
+     * يُقبل فقط إذا كان منفّذ العملية مديراً.
+     */
+    management_release?: boolean;
 }
 
 @Injectable()
 export class SalesTransactionService {
     constructor(@Optional() private readonly floor?: FloorService) {}
+
+    /**
+     * فاتورة غير مسددة أقدم من عمر الشركة تعلق البيع لهذا الزبون.
+     * الإدارة تسجّل قرار السماح على الفاتورة الجديدة.
+     */
+    private async assertUnpaidInvoiceHold(
+        tx: Prisma.TransactionClient,
+        customerId: string,
+        payload: SalesTransactionPayload,
+    ) {
+        const company = await tx.companies.findFirst({
+            select: { settings: true },
+        });
+        const blockDays = invoiceBlockDays(company?.settings);
+        if (blockDays <= 0) {
+            return;
+        }
+
+        const rows = await tx.sales_invoices.findMany({
+            where: {
+                customer_id: customerId,
+                due_amount: { gt: 0 },
+                status: {
+                    notIn: [
+                        sales_status_enum.CANCELLED,
+                        sales_status_enum.RETURNED,
+                        sales_status_enum.DRAFT,
+                    ],
+                },
+            },
+            select: {
+                invoice_number: true,
+                invoice_date: true,
+                due_amount: true,
+                status: true,
+            },
+        });
+        const hold = findOverdueHold(
+            rows.map((row) => ({
+                number: row.invoice_number,
+                invoiceDate: row.invoice_date,
+                remaining: Number(row.due_amount),
+                status: row.status,
+            })),
+            blockDays,
+        );
+        if (!hold) {
+            return;
+        }
+
+        if (payload.management_release === true) {
+            const actorId = payload.created_by?.trim();
+            const actor = actorId
+                ? await tx.users.findUnique({
+                    where: { id: actorId },
+                    select: { roles: { select: { name: true } } },
+                })
+                : null;
+            if (!isHoldManager(actor?.roles?.name)) {
+                throw new BadRequestException({
+                    code: 'MANAGEMENT_RELEASE_FORBIDDEN',
+                    message: 'السماح بالبيع مع فاتورة متأخرة متاح للإدارة فقط.',
+                });
+            }
+            payload.notes = withManagementRelease(payload.notes, hold);
+            return;
+        }
+
+        throw new BadRequestException({
+            code: 'UNPAID_INVOICE_HOLD',
+            message: invoiceHoldMessage(hold),
+        });
+    }
 
     /**
      * ============================================================
@@ -339,6 +425,12 @@ export class SalesTransactionService {
                         'الزبون غير فعال',
                 });
             }
+
+            await this.assertUnpaidInvoiceHold(
+                tx,
+                customer.id,
+                payload,
+            );
         }
 
         /**

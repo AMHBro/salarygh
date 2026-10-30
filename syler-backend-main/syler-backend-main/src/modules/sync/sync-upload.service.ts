@@ -40,8 +40,11 @@ export class SyncUploadService {
         const code = this.readCode(body);
         const message = this.readMessage(error);
         return code === 'CREDIT_LIMIT_EXCEEDED'
+            || code === 'UNPAID_INVOICE_HOLD'
+            || code === 'MANAGEMENT_RELEASE_FORBIDDEN'
             || message.includes('الحد الائتماني')
-            || message.includes('تجاوزت السقف');
+            || message.includes('تجاوزت السقف')
+            || message.includes('البيع معلق');
     }
 
     private readCode(body: unknown): string {

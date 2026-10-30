@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/paging/list_page.dart';
+import '../../../core/money/fx_books.dart';
 import '../../../core/money/party_balance.dart';
 import '../../../core/floor/floor_guard.dart';
 import '../../../core/lan/lan_sale_bridge.dart';
@@ -14,6 +15,7 @@ import '../models/cart_item_model.dart';
 import '../models/held_sale_model.dart';
 import '../../products/data/unit_quantity.dart';
 import '../models/sale_model.dart';
+import 'invoice_hold.dart';
 
 class SalesLocalRepository {
   final AppDatabase database;
@@ -25,6 +27,29 @@ class SalesLocalRepository {
     required this.database,
     required this.syncQueue,
   });
+
+  Future<OverdueInvoiceHold?> _overdueInvoiceHold(String customerId) async {
+    final blockDays = await InvoiceHoldStore.read(database);
+    if (blockDays <= 0) {
+      return null;
+    }
+    final rows = await (database.select(database.sales)
+          ..where(
+            (table) =>
+                table.customerId.equals(customerId) &
+                table.deletedAt.isNull() &
+                table.remainingAmount.isBiggerThanValue(0.001),
+          ))
+        .get();
+    return findOverdueHold([
+      for (final row in rows)
+        OpenInvoiceAge(
+          number: row.invoiceNumber,
+          createdAt: row.createdAt,
+          remaining: row.remainingAmount,
+        ),
+    ], blockDays);
+  }
 
   Future<void> _assertCustomerCreditLimit({
     required String customerId,
@@ -81,6 +106,7 @@ WHERE customer_id = ?
     double totalUsd = 0,
     String notes = '',
     String? userId,
+    bool managementRelease = false,
   }) async {
     if (items.isEmpty) {
       throw StateError(
@@ -171,6 +197,16 @@ WHERE customer_id = ?
       }
     }
 
+    if (cleanCustomerId != null) {
+      final hold = await _overdueInvoiceHold(cleanCustomerId);
+      if (hold != null) {
+        if (!managementRelease) {
+          throw StateError(invoiceHoldMessage(hold));
+        }
+        notes = withManagementRelease(notes, hold);
+      }
+    }
+
     if (await OfficeRole.instance.isBranch()) {
       return LanSaleBridge.submit(
         warehouseId: warehouseId,
@@ -190,6 +226,7 @@ WHERE customer_id = ?
         exchangeRate: exchangeRate,
         totalUsd: totalUsd,
         notes: notes,
+        managementRelease: managementRelease,
       );
     }
 
@@ -648,6 +685,12 @@ WHERE customer_id = ?
               'الكمية المتوفرة من "${product.name}" غير كافية.',
             );
           }
+
+          await FxBooks(database).freezeSaleLine(
+            saleItemId: saleItemId,
+            pieces: stockQuantity,
+            pieceCostIqd: variant.costPrice,
+          );
 
           if (currentBalance != null) {
             await (database.update(
@@ -1895,6 +1938,32 @@ WHERE customer_id = ?
         .get();
   }
 
+  Stream<List<SaleReturn>> watchSaleReturns(String saleId) {
+    return (database.select(database.saleReturns)
+          ..where((table) => table.saleId.equals(saleId))
+          ..orderBy([
+            (table) => OrderingTerm.desc(table.createdAt),
+          ]))
+        .watch();
+  }
+
+  Stream<List<SaleReturn>> watchAllSaleReturns() {
+    return (database.select(database.saleReturns)
+          ..orderBy([
+            (table) => OrderingTerm.desc(table.createdAt),
+          ]))
+        .watch();
+  }
+
+  Future<List<SaleReturnItem>> saleReturnItems(List<String> returnIds) {
+    if (returnIds.isEmpty) {
+      return Future.value(const []);
+    }
+    return (database.select(database.saleReturnItems)
+          ..where((table) => table.returnId.isIn(returnIds)))
+        .get();
+  }
+
   Future<Map<String, double>> returnedPiecesByItem(String saleId) async {
     final returns = await getSaleReturns(saleId);
     if (returns.isEmpty) {
@@ -1990,6 +2059,12 @@ WHERE customer_id = ?
           variantId: variantId,
           warehouseId: sale.warehouseId,
         );
+        await FxBooks(database).restoreReturn(
+          variantId: variantId,
+          saleItemId: item.id,
+          soldPieces: sold,
+          returnedPieces: entry.value,
+        );
         final nextQuantity = (balance?.quantity ?? 0) + entry.value;
         if (balance != null) {
           await (database.update(database.stockBalances)
@@ -2021,7 +2096,12 @@ WHERE customer_id = ?
                 quantity: entry.value,
                 referenceType: const Value('SALE_RETURN'),
                 referenceId: Value(returnId),
-                note: Value(_clean(note)),
+                note: Value(
+                  [
+                    voucherNumber,
+                    if (_clean(note) != null) _clean(note)!,
+                  ].join(' · '),
+                ),
                 serverVersion: const Value(0),
                 createdAt: now,
               ),
@@ -2064,7 +2144,10 @@ WHERE customer_id = ?
                 referenceType: const Value('SALE_RETURN'),
                 referenceId: Value(returnId),
                 note: Value(
-                  _clean(note) ?? 'مرتجع قائمة ${sale.invoiceNumber}',
+                  [
+                    'مرتجع $voucherNumber لقائمة ${sale.invoiceNumber}',
+                    if (_clean(note) != null) _clean(note)!,
+                  ].join(' — '),
                 ),
                 serverVersion: const Value(0),
                 createdAt: now,

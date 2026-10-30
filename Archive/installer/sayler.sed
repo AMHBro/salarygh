@@ -1,0 +1,39 @@
+[Version]
+Class=IEXPRESS
+SEDVersion=3
+[Options]
+PackagePurpose=InstallApp
+ShowInstallProgramWindow=1
+HideExtractAnimation=0
+UseLongFileName=1
+InsideCompressed=1
+CAB_FixedSize=0
+CAB_ResvCodeSigning=0
+RebootMode=N
+InstallPrompt=%InstallPrompt%
+DisplayLicense=%DisplayLicense%
+FinishMessage=%FinishMessage%
+TargetName=%TargetName%
+FriendlyName=%FriendlyName%
+AppLaunched=%AppLaunched%
+PostInstallCmd=%PostInstallCmd%
+AdminQuietInstCmd=%AdminQuietInstCmd%
+UserQuietInstCmd=%UserQuietInstCmd%
+SourceFiles=SourceFiles
+[Strings]
+InstallPrompt=Install Sayler on this computer?
+DisplayLicense=
+FinishMessage=Sayler is installed. Open the desktop shortcut.
+TargetName=C:\Users\MASTER\Desktop\Sayler-Setup.exe
+FriendlyName=Sayler
+AppLaunched=powershell.exe -NoProfile -ExecutionPolicy Bypass -File install.ps1
+PostInstallCmd=<None>
+AdminQuietInstCmd=
+UserQuietInstCmd=
+FILE0="sayler-app.zip"
+FILE1="install.ps1"
+[SourceFiles]
+SourceFiles0=C:\Users\MASTER\Desktop\sayler-final\Archive\installer\payload
+[SourceFiles0]
+%FILE0%=
+%FILE1%=

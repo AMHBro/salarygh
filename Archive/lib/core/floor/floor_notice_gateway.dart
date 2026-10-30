@@ -56,6 +56,14 @@ class FloorNoticeGateway implements SyncRemoteGateway {
       throw StateError('SYNC_DEFER المخزن لم يصل إلى السيرفر بعد.');
     }
 
+    final sale = await (database.select(database.sales)
+          ..where((table) => table.id.equals(header.saleId)))
+        .getSingleOrNull();
+    final saleServerId = sale?.serverId?.trim() ?? '';
+    if (saleServerId.isEmpty) {
+      throw StateError('SYNC_DEFER القائمة لم تصل إلى السيرفر بعد.');
+    }
+
     final lines = await (database.select(database.saleReturnItems)
           ..where((table) => table.returnId.equals(returnId)))
         .get();
@@ -71,6 +79,8 @@ class FloorNoticeGateway implements SyncRemoteGateway {
       apiLines.add({
         'variant_id': serverId,
         'quantity': line.quantity,
+        'unit_price': line.unitPrice,
+        'total': line.total,
       });
     }
 
@@ -100,6 +110,13 @@ class FloorNoticeGateway implements SyncRemoteGateway {
         'customer_id': customerServerId,
         'amount': amount,
         'currency': currency,
+        'sale_server_id': saleServerId,
+        'voucher_number': header.voucherNumber,
+        'invoice_number': sale?.invoiceNumber ?? '',
+        'exchange_rate': header.exchangeRate,
+        'total_iqd': header.total,
+        'note': header.note,
+        'created_at': header.createdAt.toUtc().toIso8601String(),
         'lines': apiLines,
       },
     );

@@ -867,8 +867,51 @@ class AppDatabase extends _$AppDatabase {
         await _ensureFloorTables((sql) => customStatement(sql));
         await _ensureStoreLinkTables((sql) => customStatement(sql));
         await _ensurePrintSettings((sql) => customStatement(sql));
+        await _ensureOfficePrefs((sql) => customStatement(sql));
+        await _ensureStaffTables((sql) => customStatement(sql));
       },
     );
+  }
+
+  Future<void> _ensureStaffTables(
+    Future<void> Function(String sql) exec,
+  ) async {
+    await exec('''
+      CREATE TABLE IF NOT EXISTS staff_employees (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await exec('''
+      CREATE TABLE IF NOT EXISTS staff_expenses (
+        id TEXT PRIMARY KEY,
+        employee_id TEXT NOT NULL,
+        amount_iqd INTEGER NOT NULL CHECK (amount_iqd > 0),
+        note TEXT NOT NULL DEFAULT '',
+        spent_on TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await exec('''
+      CREATE TABLE IF NOT EXISTS day_account_checks (
+        day TEXT PRIMARY KEY,
+        matched INTEGER NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _ensureOfficePrefs(
+    Future<void> Function(String sql) exec,
+  ) async {
+    await exec('''
+      CREATE TABLE IF NOT EXISTS office_prefs (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _ensurePrintSettings(

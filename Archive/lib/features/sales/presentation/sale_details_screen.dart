@@ -31,9 +31,11 @@ class _SaleDetailsScreenState
 
   StreamSubscription<List<SaleItem>>?
   _itemsSubscription;
+  StreamSubscription<List<SaleReturn>>? _returnsSubscription;
 
   List<SaleItem> _items = [];
   List<SaleReturn> _returns = [];
+  List<SaleReturnItem> _returnItems = [];
 
   bool _isLoading = true;
   late Sale _sale;
@@ -43,12 +45,13 @@ class _SaleDetailsScreenState
     super.initState();
     _sale = widget.sale;
     _listenToItems();
-    _loadReturns();
+    _listenToReturns();
   }
 
   @override
   void dispose() {
     _itemsSubscription?.cancel();
+    _returnsSubscription?.cancel();
 
     super.dispose();
   }
@@ -126,6 +129,10 @@ class _SaleDetailsScreenState
                         height: 14,
                       ),
                       _buildItemsCard(),
+                      if (_returns.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        _buildReturnsCard(),
+                      ],
                       const SizedBox(
                         height: 14,
                       ),
@@ -218,10 +225,11 @@ class _SaleDetailsScreenState
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
-                      'مرتجعات: ${_returns.map((row) => row.voucherNumber).join('، ')}',
+                      'سند مرتجع: ${_returns.map((row) => row.voucherNumber).join('، ')}',
                       style: const TextStyle(
                         fontSize: 12,
-                        color: AppTheme.secondaryTextColor,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFB26A00),
                       ),
                     ),
                   ),
@@ -447,14 +455,97 @@ class _SaleDetailsScreenState
     );
   }
 
-  Future<void> _loadReturns() async {
-    final rows = await _salesRepository.getSaleReturns(_sale.id);
-    if (!mounted) {
-      return;
+  void _listenToReturns() {
+    _returnsSubscription = _salesRepository.watchSaleReturns(_sale.id).listen(
+      (rows) async {
+        final items = await _salesRepository.saleReturnItems(
+          rows.map((row) => row.id).toList(),
+        );
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _returns = rows;
+          _returnItems = items;
+        });
+      },
+    );
+  }
+
+  Widget _buildReturnsCard() {
+    return _DetailsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'سندات المرتجع',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'أرقام القائمة الأصلية تبقى كما طُبعت. هذا السند هو سجل الكمية الراجعة.',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppTheme.secondaryTextColor,
+            ),
+          ),
+          const SizedBox(height: 14),
+          for (final row in _returns) ...[
+            Text(
+              row.voucherNumber,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${_formatDateTime(row.createdAt)} · ${_returnMoney(row.total)}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppTheme.secondaryTextColor,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (final line in _returnItems.where((item) => item.returnId == row.id))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  '${_returnItemName(line)} · ${_piecesLabel(line.quantity)} قطعة · ${_returnMoney(line.total)}',
+                ),
+              ),
+            if ((row.note ?? '').trim().isNotEmpty)
+              Text(
+                row.note!.trim(),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.secondaryTextColor,
+                ),
+              ),
+            if (row != _returns.last) const Divider(height: 22),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _returnItemName(SaleReturnItem line) {
+    for (final item in _items) {
+      if (item.id == line.saleItemId) {
+        return item.productNameSnapshot;
+      }
     }
-    setState(() {
-      _returns = rows;
-    });
+    return 'مادة';
+  }
+
+  String _piecesLabel(double quantity) {
+    if (quantity == quantity.roundToDouble()) {
+      return quantity.toStringAsFixed(0);
+    }
+    return quantity.toStringAsFixed(2);
   }
 
   double _soldPieces(SaleItem item) {
@@ -562,7 +653,6 @@ class _SaleDetailsScreenState
                                   return;
                                 }
                                 Navigator.pop(dialogContext);
-                                await _loadReturns();
                                 if (!mounted) {
                                   return;
                                 }

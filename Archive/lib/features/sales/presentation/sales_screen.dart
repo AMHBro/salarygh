@@ -4,6 +4,7 @@ import '../../../core/di/app_services.dart';
 import '../../../core/paging/list_page.dart';
 import '../../../core/floor/floor_guard.dart';
 import '../../../core/floor/floor_store.dart';
+import '../../../core/auth/auth_user.dart';
 import '../../../core/storage/auth_storage.dart';
 import '../../../core/printing/print_preview.dart';
 import '../../settings/data/company_settings_repository.dart';
@@ -14,6 +15,7 @@ import '../../products/models/product_variant_model.dart';
 import '../../representatives/models/representative_model.dart';
 import '../../users/data/station_grants.dart';
 import '../../warehouses/models/warehouse_model.dart';
+import '../data/invoice_hold.dart';
 import '../models/cart_item_model.dart';
 import '../models/held_sale_model.dart';
 import '../models/sale_model.dart';
@@ -205,6 +207,22 @@ class _SalesScreenState extends State<SalesScreen> {
       setState(() {
         _usdRate = rate;
       });
+      await _refreshInvoiceHoldDays(company);
+    } catch (_) {}
+  }
+
+  Future<void> _refreshInvoiceHoldDays([Map<String, dynamic>? company]) async {
+    try {
+      final loaded = company ??
+          await CompanySettingsRepository(
+            apiClient: AppServices.apiClient,
+          ).getCompany();
+      final settings = loaded['settings'];
+      final raw = settings is Map ? settings['invoice_block_days'] : null;
+      await InvoiceHoldStore.write(
+        AppServices.database,
+        parseInvoiceBlockDays(raw),
+      );
     } catch (_) {}
   }
 
@@ -3735,43 +3753,71 @@ class _SalesScreenState extends State<SalesScreen> {
       final heldSaleIdBeforeSave =
           _activeHeldSaleId;
 
-      final sale =
-      await _salesRepository
-          .createSale(
-        warehouseId:
-        warehouse.id,
-        warehouseName:
-        warehouse.name,
-        customerId:
-        customer?.id,
-        customerName:
-        _invoiceCustomerName,
-        representativeId:
-        representative?.id,
-        items:
-        List<CartItemModel>.from(
-          _cart,
-        ),
-        subtotal:
-        _subtotal,
-        discount:
-        _discount,
-        porterage: _porterage,
-        total:
-        _total,
-        paidAmount:
-        _paidAmount,
-        remainingAmount:
-        _remainingAmount,
-        paymentType:
-        _paymentType,
-        currency: _saleCurrency,
-        exchangeRate: _saleCurrency == 'USD' ? _usdRate : 0,
-        totalUsd: _saleCurrency == 'USD' && _usdRate > 0
-            ? _total / _usdRate
-            : 0,
-        notes: _composedSaleNotes(),
-      );
+      await _refreshInvoiceHoldDays();
+      var managementRelease = false;
+      late final SaleModel sale;
+      while (true) {
+        try {
+          sale = await _salesRepository.createSale(
+            warehouseId: warehouse.id,
+            warehouseName: warehouse.name,
+            customerId: customer?.id,
+            customerName: _invoiceCustomerName,
+            representativeId: representative?.id,
+            items: List<CartItemModel>.from(_cart),
+            subtotal: _subtotal,
+            discount: _discount,
+            porterage: _porterage,
+            total: _total,
+            paidAmount: _paidAmount,
+            remainingAmount: _remainingAmount,
+            paymentType: _paymentType,
+            currency: _saleCurrency,
+            exchangeRate: _saleCurrency == 'USD' ? _usdRate : 0,
+            totalUsd: _saleCurrency == 'USD' && _usdRate > 0
+                ? _total / _usdRate
+                : 0,
+            notes: _composedSaleNotes(),
+            managementRelease: managementRelease,
+          );
+          break;
+        } on StateError catch (error) {
+          if (!error.message.startsWith(invoiceHoldPrefix)) {
+            rethrow;
+          }
+          if (!mounted) {
+            return;
+          }
+          final session = await AuthStorage().readSession();
+          if (!canReleaseOverdueSales(session?.user.role)) {
+            _showMessage(error.message);
+            return;
+          }
+          final approved = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: const Text('تعليق البيع'),
+                content: Text(error.message),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('إبقاء التعليق'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('السماح بقرار الإدارة'),
+                  ),
+                ],
+              );
+            },
+          );
+          if (approved != true || !mounted) {
+            return;
+          }
+          managementRelease = true;
+        }
+      }
 
       // =======================================================================
       // DELETE HELD SALE AFTER SUCCESSFUL LOCAL SALE CREATION

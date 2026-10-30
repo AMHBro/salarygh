@@ -7,6 +7,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/floor/floor_store.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/sync/sync_remote_gateway.dart';
+import 'invoice_hold.dart';
 
 class DirectSalesSyncRemoteGateway
     implements SyncRemoteGateway {
@@ -427,6 +428,10 @@ class DirectSalesSyncRemoteGateway
       'hold_keys':
       holdKeys,
     };
+
+    if (sale.notes.contains(managementReleaseMark)) {
+      payload['management_release'] = true;
+    }
 
     if (customerServerId != null) {
       payload['customer_id'] =

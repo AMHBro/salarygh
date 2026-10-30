@@ -28,6 +28,7 @@ class LanSaleBridge {
     required double exchangeRate,
     required double totalUsd,
     required String notes,
+    bool managementRelease = false,
   }) async {
     final role = OfficeRole.instance;
     final base = await role.readBase();
@@ -58,6 +59,7 @@ class LanSaleBridge {
       'exchangeRate': exchangeRate,
       'totalUsd': totalUsd,
       'notes': notes,
+      'managementRelease': managementRelease,
       'warehouseServerId': await _serverId(
         AppServices.database,
         'warehouses',

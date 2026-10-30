@@ -1224,6 +1224,7 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                       'إخراج',
                       'تحويل',
                       'تسوية',
+                      'مرتجع',
                     ],
                     onChanged: (value) {
                       if (value == null) {
@@ -1310,7 +1311,12 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
                   height: 3,
                 ),
                 Text(
-                  movement.barcode,
+                  movement.type == _MovementUiType.returnIn &&
+                          (movement.note?.trim().isNotEmpty ?? false)
+                      ? movement.note!.trim()
+                      : movement.barcode,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 10.5,
                     color: AppTheme.secondaryTextColor,
@@ -3056,9 +3062,11 @@ class _WarehousesScreenState extends State<WarehousesScreen> {
       ) {
     switch (value) {
       case 'PURCHASE':
-      case 'RETURN_IN':
       case 'ADJUSTMENT_IN':
         return _MovementUiType.stockIn;
+
+      case 'RETURN_IN':
+        return _MovementUiType.returnIn;
 
       case 'SALE':
       case 'RETURN_OUT':
@@ -3252,6 +3260,7 @@ enum _MovementUiType {
   stockOut,
   transfer,
   adjustment,
+  returnIn,
 }
 
 extension on _MovementUiType {
@@ -3268,6 +3277,9 @@ extension on _MovementUiType {
 
       case _MovementUiType.adjustment:
         return 'تسوية';
+
+      case _MovementUiType.returnIn:
+        return 'مرتجع';
     }
   }
 }
@@ -3821,6 +3833,11 @@ class _MovementTypeBadge extends StatelessWidget {
         foreground = const Color(
           0xFFB26A00,
         );
+        break;
+
+      case _MovementUiType.returnIn:
+        background = const Color(0xFFFFF4E5);
+        foreground = const Color(0xFFB26A00);
         break;
     }
 

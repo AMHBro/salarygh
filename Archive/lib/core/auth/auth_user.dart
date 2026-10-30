@@ -45,6 +45,11 @@ bool canApproveWarehouseDelete(String? role) {
   return _isManagerRole(role);
 }
 
+/// السماح ببيع زبون لديه فاتورة غير مسددة تجاوزت العمر المحدد.
+bool canReleaseOverdueSales(String? role) {
+  return _isManagerRole(role);
+}
+
 bool _isManagerRole(String? role) {
   switch ((role ?? '').trim().toUpperCase()) {
     case 'ADMIN':

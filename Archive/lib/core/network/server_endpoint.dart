@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// عنوان السيرفر لكل حاسبة.
@@ -46,31 +48,42 @@ class ServerEndpoint {
     await _storage.write(key: _internetKey, value: internet);
   }
 
-  /// يثبت المكتب على السيرفر العام مرة واحدة.
-  /// بعد ذلك يبقى اختيار «على الراوتر» من الإعدادات سارياً.
-  Future<void> ensurePublicOffice() async {
-    final applied = await _storage.read(key: _publicOfficeKey);
-    if (applied == '1') {
-      return;
-    }
-    final current = await read();
-    await save(
-      ServerRoute(
-        useInternet: true,
-        lanBase: current.lanBase,
-        internetBase: current.internetBase ?? defaultInternet,
-      ),
-    );
-    await _storage.write(key: _publicOfficeKey, value: '1');
-  }
+  /// العنوان العام القديم غير منشور، لذلك لا يُفرض على أول تشغيل.
+  Future<void> ensurePublicOffice() async {}
 
-  /// عنوان المكتب: عبر الإنترنت يشمل السيرفر العام.
+  /// عنوان المكتب. ملف server.txt بجانب البرنامج يتقدم على العنوان المحفوظ.
   Future<String> activeBaseUrl() async {
+    final bundled = await _bundledServer();
+    if (bundled != null) {
+      return bundled;
+    }
     final route = await read();
     if (route.useInternet) {
-      return route.internetBase ?? defaultInternet;
+      final internet = route.internetBase ?? defaultInternet;
+      if (internet != defaultInternet) {
+        return internet;
+      }
     }
     return route.lanBase;
+  }
+
+  Future<String?> _bundledServer() async {
+    try {
+      final file = File(
+        '${File(Platform.resolvedExecutable).parent.path}${Platform.pathSeparator}server.txt',
+      );
+      if (!await file.exists()) {
+        return null;
+      }
+      for (final raw in await file.readAsLines()) {
+        final line = raw.trim();
+        if (line.isEmpty || line.startsWith('#')) {
+          continue;
+        }
+        return normalizeServerBase(line);
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// المتجر والمندوب يتصلان بعنوان الإنترنت.

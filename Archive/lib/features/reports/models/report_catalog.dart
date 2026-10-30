@@ -58,7 +58,7 @@ const List<ReportDefinition> reportCatalog = [
     group: reportGroupCustomers,
     title: 'كشف حساب مورد',
     purpose:
-        'حركات الشراء والدفع لمورد واحد خلال الفترة، مع المدين والدائن والرصيد.',
+        'حركات الشراء والدفع لمورد واحد. رصيد الدينار ورصيد الدولار منفصلان، ومع فاتورة الدولار يظهر سعر الصرف الذي حُفظ معها.',
     path: 'local:supplier-statement',
     dates: true,
     localKind: 'supplier',
@@ -204,6 +204,14 @@ const List<ReportDefinition> reportCatalog = [
   ),
   ReportDefinition(
     group: reportGroupMaterials,
+    title: 'جرد قيمة المخزون',
+    purpose:
+        'قيمة الدفتر تبقى على متوسط الشراء بالدينار. قيمة الاستبدال للبضاعة المشتراة بالدولار تتبع سعر الصرف الحالي، وتظهر وحدها في أثر الصرف.',
+    path: 'local:stock-valuation',
+    localKind: 'stockValuation',
+  ),
+  ReportDefinition(
+    group: reportGroupMaterials,
     title: 'تقرير بحركة مادة معينة لفترة معينة',
     purpose: 'حركات مخزون خيار مادة واحد خلال الفترة.',
     path: '/reports/products/movements',
@@ -227,7 +235,7 @@ const List<ReportDefinition> reportCatalog = [
     group: reportGroupCash,
     title: 'تقرير رأس المال',
     purpose:
-        'يبدأ من رأس المال في الإعدادات. البيع يضيف الربح أو يخصم الخسارة. الشراء والقبض والصرف تظهر ولا تغير رأس المال. الدولار يتحول للدينار.',
+        'يبدأ من رأس المال في الإعدادات. البيع يضيف الربح المحاسبي بكلفة الفاتورة وقت البيع. الشراء والقبض والصرف تظهر ولا تغير رأس المال. مبلغ الدولار يبقى في عمود الدولار.',
     path: 'local:capital',
     dates: true,
     localKind: 'capital',
@@ -287,6 +295,31 @@ const List<ReportDefinition> reportCatalog = [
     purpose: 'المبيعات والكلفة والربح الإجمالي لكل فاتورة.',
     path: '/reports/profits/analysis',
     dates: true,
+  ),
+  ReportDefinition(
+    group: reportGroupProfits,
+    title: 'الربح اليومي',
+    purpose:
+        'الربح المحاسبي يثبت كلفة الفاتورة وقت البيع. كلفة الاستبدال تعيد تقييم الجزء المشترى بالدولار على الصرف الحالي. فرق الصرف سطر مستقل لسداد دين الدولار، ولا يختلط بربح البيع.',
+    path: 'local:daily-profit',
+    dates: true,
+    localKind: 'dailyProfit',
+  ),
+  ReportDefinition(
+    group: reportGroupProfits,
+    title: 'نسب ربح المواد',
+    purpose:
+        'سعر الشراء والبيع ونسبة الربح لكل مادة. من هنا يمكن رفع سعر البيع بنسبة واحدة لكل المنتجات.',
+    path: 'local:selling-margins',
+    localKind: 'priceMargins',
+  ),
+  ReportDefinition(
+    group: reportGroupProfits,
+    title: 'الصرفيات',
+    purpose: 'صرفيات الموظفين خلال اليوم أو الفترة المحددة.',
+    path: 'local:staff-expenses',
+    dates: true,
+    localKind: 'staffExpenses',
   ),
 ];
 
@@ -379,6 +412,35 @@ const Map<String, String> reportColumnLabels = {
   'sales_iqd': 'المبيعات',
   'cost_iqd': 'الكلفة',
   'gross_profit_iqd': 'الربح الإجمالي',
+  'day': 'اليوم',
+  'sales_total': 'المبيعات',
+  'cost_total': 'الكلفة',
+  'profit_total': 'الربح المحاسبي',
+  'replacement_cost': 'كلفة الاستبدال',
+  'replacement_profit': 'الربح على الاستبدال',
+  'fx_difference': 'فرق الصرف',
+  'fx_note': 'سبب فرق الصرف',
+  'expenses_total': 'الصرفيات',
+  'net_total': 'الصافي',
+  'profit_percent': 'نسبة الربح',
+  'material_name': 'المادة',
+  'buy_price': 'سعر الشراء',
+  'retail_price': 'سعر البيع',
+  'retail_margin': 'نسبة ربح البيع',
+  'wholesale_price': 'سعر الجملة',
+  'wholesale_margin': 'نسبة ربح الجملة',
+  'account_status': 'مطابقة الحساب',
+  'book_value_iqd': 'قيمة الدفتر',
+  'replacement_value_iqd': 'قيمة الاستبدال',
+  'fx_effect_iqd': 'أثر الصرف',
+  'rate_used': 'سعر الصرف المستخدم',
+  'debit_usd': 'مدين دولار',
+  'credit_usd': 'دائن دولار',
+  'running_balance_usd': 'رصيد الدولار',
+  'exchange_rate': 'سعر الصرف',
+  'employee_name': 'الموظف',
+  'expense_amount': 'المبلغ',
+  'expense_note': 'البيان',
 };
 
 String reportColumnLabel(String key) {

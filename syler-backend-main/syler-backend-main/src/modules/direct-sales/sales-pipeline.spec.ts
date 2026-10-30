@@ -23,6 +23,9 @@ describe('مسار البيع من الطلب حتى الذمة', () => {
         const invoices = new Map<string, any>();
         const tx = {
             $queryRaw: async () => [{ id: 'stock-row' }],
+            companies: {
+                findFirst: async () => ({ settings: {} }),
+            },
             sales_invoices: {
                 findUnique: async ({ where }: any) => invoices.get(where.idempotency_key) ?? null,
                 create: async ({ data }: any) => {

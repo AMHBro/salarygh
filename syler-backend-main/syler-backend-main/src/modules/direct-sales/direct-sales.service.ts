@@ -325,6 +325,9 @@ export class DirectSalesService {
               sync_revalidate:
                 dto.sync_revalidate === true,
 
+              management_release:
+                dto.management_release === true,
+
               currency:
                 dto.currency ??
                 null,

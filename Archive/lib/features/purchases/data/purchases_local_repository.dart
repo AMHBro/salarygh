@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/paging/list_page.dart';
+import '../../../core/money/fx_books.dart';
 import '../../../core/money/party_balance.dart';
 import '../../../core/sync/sync_operation.dart';
 import '../../../core/sync/sync_queue_repository.dart';
@@ -514,6 +515,13 @@ class PurchasesLocalRepository {
                 updatedAt: Value(now),
               ),
             );
+            if (currency == 'USD' && exchangeRate > 0) {
+              await FxBooks(database).addUsdPurchase(
+                variantId: variant.id,
+                addedPieces: stockQuantity,
+                usdPerPiece: pieceCost / exchangeRate,
+              );
+            }
           }
 
           final double newStock =
@@ -737,6 +745,16 @@ class PurchasesLocalRepository {
           ),
         );
 
+        if (purchaseLedger.currency == 'USD') {
+          await FxBooks(database).openSupplierDebt(
+            entryId: purchaseLedgerId,
+            supplierId: supplierId,
+            usdAmount: purchaseLedger.amount,
+            rate: exchangeRate,
+            bookedOn: now,
+          );
+        }
+
         // =====================================================================
         // LOCAL SUPPLIER PAYMENT
         // =====================================================================
@@ -847,10 +865,19 @@ class PurchasesLocalRepository {
               const Value(
                 0,
               ),
-              createdAt:
-              now,
-            ),
-          );
+            createdAt:
+            now,
+          ),
+        );
+          if (paidLedger.currency == 'USD') {
+            await FxBooks(database).settleSupplierPayment(
+              entryId: paymentLedgerId,
+              supplierId: supplierId,
+              usdAmount: paidLedger.amount,
+              rate: exchangeRate,
+              bookedOn: now,
+            );
+          }
         }
 
         // =====================================================================

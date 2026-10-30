@@ -116,6 +116,13 @@ export class CreateDirectSaleDto {
   @IsBoolean()
   sync_revalidate?: boolean;
 
+  @ApiPropertyOptional({
+    description: 'قرار إدارة بالبيع رغم فاتورة غير مسددة تجاوزت العمر المحدد',
+  })
+  @IsOptional()
+  @IsBoolean()
+  management_release?: boolean;
+
   @ApiPropertyOptional({ example: 'IQD', description: 'عملة الفاتورة. USD لا يُقاس على سقف الدينار' })
   @IsOptional()
   @IsString()

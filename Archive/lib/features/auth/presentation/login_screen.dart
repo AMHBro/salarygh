@@ -166,31 +166,13 @@ class _LoginScreenState
                   alignment:
                   Alignment.center,
                   child:
-                  Container(
-                    width:
-                    58,
-                    height:
-                    58,
-                    decoration:
-                    BoxDecoration(
-                      color:
-                      const Color(
-                        0xFF1D1D1F,
-                      ),
-                      borderRadius:
-                      BorderRadius
-                          .circular(
-                        17,
-                      ),
-                    ),
-                    child:
-                    const Icon(
-                      Icons
-                          .query_stats_rounded,
-                      color:
-                      Colors.white,
-                      size:
-                      27,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(17),
+                    child: Image.asset(
+                      'assets/branding/app_icon.png',
+                      width: 58,
+                      height: 58,
+                      fit: BoxFit.cover,
                     ),
                   ),
                 ),
